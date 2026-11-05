@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -24,7 +24,7 @@ import { getAnalyticsOverview } from "../../api/analytics";
 import type { AnalyticsOverview } from "../../api/analytics";
 import "./Analytics.css";
 
-function Analytics() {
+function AnalyticsPage() {
   const { activeOrganization } = useOrganization();
   const organizationId = activeOrganization?.id ?? null;
 
@@ -34,40 +34,48 @@ function Analytics() {
   const [analytics, setAnalytics] =
     useState<AnalyticsOverview | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(organizationId));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const loadAnalytics = async (showRefresh = false) => {
+  // Fetches and stores data; sets no state before the request, so it can
+  // run straight from the mount effect.
+  const fetchAnalytics = useCallback(async () => {
     if (!organizationId) {
-      setLoading(false);
       return;
     }
 
-    try {
-      setError("");
-
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      const data = await getAnalyticsOverview(organizationId);
-
-      setAnalytics(data);
-    } catch (err) {
-      console.error("Failed to load analytics:", err);
-      setError("Unable to load analytics data.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    await getAnalyticsOverview(organizationId)
+      .then((data) => {
+        setAnalytics(data);
+        setError("");
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load analytics:", err);
+        setError("Unable to load analytics data.");
+      })
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, [organizationId]);
 
   useEffect(() => {
-    loadAnalytics();
-  }, [organizationId]);
+    void fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  // Retry / Refresh buttons.
+  const loadAnalytics = (showRefresh = false) => {
+    setError("");
+
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    void fetchAnalytics();
+  };
 
   const revenueChartData = useMemo(() => {
     if (!analytics) {
@@ -386,6 +394,15 @@ function Analytics() {
 
     </div>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+function Analytics() {
+  const { activeOrganizationId } = useOrganization();
+
+  return <AnalyticsPage key={activeOrganizationId ?? "none"} />;
 }
 
 export default Analytics;

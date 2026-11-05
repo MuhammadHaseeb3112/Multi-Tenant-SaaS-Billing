@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertCircle,
@@ -41,7 +41,7 @@ const formatMoney = (amount: string, currency = "usd") =>
     currency: currency.toUpperCase(),
   }).format(Number(amount));
 
-function Usage() {
+function UsagePage() {
   const { activeOrganization } = useOrganization();
   const organizationId = activeOrganization?.id ?? null;
 
@@ -57,47 +57,54 @@ function Usage() {
   const [usage, setUsage] =
     useState<UsageSummary | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(organizationId));
   const [refreshing, setRefreshing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const loadUsage = async (showRefresh = false) => {
+  // Fetches and stores data; sets no state before the request, so it can
+  // run straight from the mount effect.
+  const fetchUsage = useCallback(async () => {
     if (!organizationId) {
-      setLoading(false);
       return;
     }
 
-    try {
-      setError("");
-      setSuccess("");
-
-      if (showRefresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
-      }
-
-      const [data, overageCharges] = await Promise.all([
-        getUsageSummary(organizationId),
-        listOverageCharges(organizationId).catch(() => []),
-      ]);
-
-      setUsage(data);
-      setCharges(overageCharges);
-    } catch (err) {
-      console.error("Failed to load usage:", err);
-      setError("Unable to load usage data.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+    await Promise.all([
+      getUsageSummary(organizationId),
+      listOverageCharges(organizationId).catch(() => []),
+    ])
+      .then(([data, overageCharges]) => {
+        setUsage(data);
+        setCharges(overageCharges);
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load usage:", err);
+        setError("Unable to load usage data.");
+      })
+      .finally(() => {
+        setLoading(false);
+        setRefreshing(false);
+      });
+  }, [organizationId]);
 
   useEffect(() => {
-    loadUsage();
-  }, [organizationId]);
+    void fetchUsage();
+  }, [fetchUsage]);
+
+  // Retry / Refresh buttons and after recording usage.
+  const loadUsage = async (showRefresh = false) => {
+    setError("");
+    setSuccess("");
+
+    if (showRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    await fetchUsage();
+  };
 
   const usagePercentage = useMemo(() => {
     if (!usage || usage.limit <= 0) {
@@ -510,6 +517,15 @@ function Usage() {
       )}
     </div>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+function Usage() {
+  const { activeOrganizationId } = useOrganization();
+
+  return <UsagePage key={activeOrganizationId ?? "none"} />;
 }
 
 export default Usage;

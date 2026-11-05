@@ -1,5 +1,13 @@
 # SaaS Billing — Multi-Tenant Subscription & Usage-Based Billing Platform
 
+[![CI](https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing/actions/workflows/ci.yml/badge.svg)](https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing/actions/workflows/ci.yml)
+![Tests](https://img.shields.io/badge/tests-350%20passing-brightgreen)
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
+![Django](https://img.shields.io/badge/Django-6-092E20?logo=django&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
+![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?logo=stripe&logoColor=white)
+
 A full-stack SaaS platform that sells its own API product and bills for it:
 organizations subscribe to plans with **Stripe**, call a metered API with
 **API keys**, get **usage limits and paid overage**, and manage invoices,
@@ -158,7 +166,7 @@ without overage → `429`.
 
 ```bash
 cd saas_billing_backend_api
-docker compose exec web pytest -q      # 349 tests
+docker compose exec web pytest -q      # 350 tests
 ```
 
 Stripe is mocked in tests. Bug fixes come with regression tests that fail

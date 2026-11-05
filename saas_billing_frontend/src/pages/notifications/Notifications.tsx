@@ -51,7 +51,7 @@ const getNotificationIcon = (type: string) => {
   return "SYS";
 };
 
-export default function Notifications() {
+function NotificationsPage() {
   const navigate = useNavigate();
 
   const { activeOrganizationId } = useOrganization();
@@ -62,38 +62,39 @@ export default function Notifications() {
     Notification[]
   >([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(organizationId));
   const [error, setError] = useState("");
 
-  const loadNotifications = useCallback(async () => {
+  // Fetches and stores data; sets no state before the request, so it can
+  // run straight from the mount effect.
+  const fetchNotifications = useCallback(async () => {
     if (!organizationId) {
-      setNotifications([]);
-      setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getNotifications(organizationId);
-
-      setNotifications(data);
-    } catch (err) {
-      console.error(
-        "Failed to load notifications:",
-        err,
-      );
-
-      setError("Failed to load notifications.");
-    } finally {
-      setLoading(false);
-    }
+    await getNotifications(organizationId)
+      .then((data) => {
+        setNotifications(data);
+        setError("");
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load notifications:", err);
+        setError("Failed to load notifications.");
+      })
+      .finally(() => setLoading(false));
   }, [organizationId]);
 
   useEffect(() => {
-    void loadNotifications();
-  }, [loadNotifications]);
+    void fetchNotifications();
+  }, [fetchNotifications]);
+
+  // Refresh button.
+  const loadNotifications = async () => {
+    setLoading(true);
+    setError("");
+
+    await fetchNotifications();
+  };
 
   const unreadCount = useMemo(
     () =>
@@ -315,4 +316,13 @@ export default function Notifications() {
       </div>
     </main>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+export default function Notifications() {
+  const { activeOrganizationId } = useOrganization();
+
+  return <NotificationsPage key={activeOrganizationId ?? "none"} />;
 }

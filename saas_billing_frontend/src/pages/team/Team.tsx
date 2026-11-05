@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   RefreshCw,
@@ -24,7 +24,7 @@ import type {
   TeamMember,
 } from "../../api/tenants";
 
-function Team() {
+function TeamPage() {
 
     const navigate = useNavigate();
     const { user } = useAuth();
@@ -34,7 +34,11 @@ function Team() {
     const currentRole = activeOrganization?.role as MemberRole | undefined;
 
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Only OWNER/ADMIN load the member list (see fetchMembers).
+  const [loading, setLoading] = useState(
+    organizationId !== null &&
+      (currentRole === "OWNER" || currentRole === "ADMIN"),
+  );
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
 
@@ -48,39 +52,41 @@ function Team() {
   const canManageTeam =
     currentRole === "OWNER" || currentRole === "ADMIN";
 
-  const loadMembers = async () => {
-    if (!organizationId) {
-      setMembers([]);
-      setLoading(false);
+  // Fetches and stores data; sets no state before the request, so it can
+  // run straight from the mount effect. The members API is OWNER/ADMIN
+  // only, so other roles never call it (they see a message instead).
+  const fetchMembers = useCallback(async () => {
+    if (!organizationId || !canManageTeam) {
       return;
     }
 
-    // The members API is OWNER/ADMIN only; don't call it just to
-    // show other roles a "Failed to load" error.
-    if (!canManageTeam) {
-      setMembers([]);
-      setError("");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getTeamMembers(organizationId);
-      setMembers(data);
-    } catch (err) {
-      console.error("Failed to load team members:", err);
-      setError("Failed to load team members.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    await getTeamMembers(organizationId)
+      .then((data) => {
+        setMembers(data);
+        setError("");
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load team members:", err);
+        setError("Failed to load team members.");
+      })
+      .finally(() => setLoading(false));
+  }, [organizationId, canManageTeam]);
 
   useEffect(() => {
-    void loadMembers();
-  }, [organizationId, canManageTeam]);
+    void fetchMembers();
+  }, [fetchMembers]);
+
+  // Refresh button and after invite / role change / removal.
+  const loadMembers = async () => {
+    if (!organizationId || !canManageTeam) {
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    await fetchMembers();
+  };
 
   const filteredMembers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -957,6 +963,15 @@ const handleInvite = async () => {
       )}
     </div>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+function Team() {
+  const { activeOrganization } = useOrganization();
+
+  return <TeamPage key={activeOrganization?.id ?? "none"} />;
 }
 
 export default Team;

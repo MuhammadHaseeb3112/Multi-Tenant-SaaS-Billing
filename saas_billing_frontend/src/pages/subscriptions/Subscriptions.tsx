@@ -87,7 +87,7 @@ function ArrowIcon() {
   );
 }
 
-function Subscriptions() {
+function SubscriptionsPage() {
 
   const { activeOrganizationId } = useOrganization();
   const organizationId = activeOrganizationId;
@@ -112,65 +112,60 @@ function Subscriptions() {
   const [message, setMessage] =
     useState<string | null>(null);
 
+  // Fetches and stores data; sets no state before the requests, so it can
+  // run straight from the mount effect. After an action, use
+  // reloadBillingData() (shows the loading state again).
   const loadBillingData = useCallback(async () => {
-  setIsLoading(true);
-  setError(null);
+    // 1. Always load the available plans.
+    // 2. Then the organization's subscription, when there is an org.
+    await getPlans()
+      .then((plansResponse) => {
+        setPlans(plansResponse);
+        setError(null);
 
-  try {
-    // ---------------------------------------------------------
-    // 1. Always load available plans
-    // ---------------------------------------------------------
-    const plansResponse = await getPlans();
+        if (!organizationId) {
+          setSubscription(null);
+          return;
+        }
 
-    setPlans(plansResponse);
+        return getSubscription(organizationId).then(
+          (subscriptionResponse) => {
+            setSubscription(subscriptionResponse);
 
-    // ---------------------------------------------------------
-    // 2. Load organization subscription only when
-    //    an organization is available
-    // ---------------------------------------------------------
-    if (!organizationId) {
-      setSubscription(null);
-      return;
-    }
+            if (subscriptionResponse.interval === "ANNUAL") {
+              setInterval("ANNUAL");
+            }
+          },
+          (subscriptionError: any) => {
+            // Organization may not have a subscription yet.
+            if (subscriptionError?.response?.status === 404) {
+              setSubscription(null);
+            } else {
+              throw subscriptionError;
+            }
+          },
+        );
+      })
+      .catch((requestError: any) => {
+        const detail =
+          requestError?.response?.data?.detail ||
+          "Unable to load billing information.";
 
-    try {
-      const subscriptionResponse =
-        await getSubscription(organizationId);
-
-      setSubscription(subscriptionResponse);
-
-      if (
-        subscriptionResponse.interval ===
-        "ANNUAL"
-      ) {
-        setInterval("ANNUAL");
-      }
-    } catch (subscriptionError: any) {
-      /*
-       * Organization may not have a subscription yet.
-       */
-      if (
-        subscriptionError?.response?.status === 404
-      ) {
-        setSubscription(null);
-      } else {
-        throw subscriptionError;
-      }
-    }
-  } catch (requestError: any) {
-    const detail =
-      requestError?.response?.data?.detail ||
-      "Unable to load billing information.";
-
-    setError(detail);
-  } finally {
-    setIsLoading(false);
-  }
-}, [organizationId]);
+        setError(detail);
+      })
+      .finally(() => setIsLoading(false));
+  }, [organizationId]);
 
   useEffect(() => {
     void loadBillingData();
   }, [loadBillingData]);
+
+  const reloadBillingData = async () => {
+    setIsLoading(true);
+    setError(null);
+
+    await loadBillingData();
+  };
 
   const currentPlanCode =
     subscription?.plan?.code ?? "FREE";
@@ -231,8 +226,9 @@ function Subscriptions() {
         );
 
         if (response.checkout_url) {
-          window.location.href =
-            response.checkout_url;
+          window.location.assign(
+            response.checkout_url,
+          );
         }
 
         return;
@@ -253,7 +249,7 @@ function Subscriptions() {
           "Subscription change submitted successfully.",
       );
 
-      await loadBillingData();
+      await reloadBillingData();
     } catch (requestError: any) {
       const detail =
         requestError?.response?.data?.detail ||
@@ -288,7 +284,7 @@ function Subscriptions() {
           "Subscription cancellation scheduled.",
       );
 
-      await loadBillingData();
+      await reloadBillingData();
     } catch (requestError: any) {
       const detail =
         requestError?.response?.data?.detail ||
@@ -320,7 +316,7 @@ function Subscriptions() {
           "Subscription resumed successfully.",
       );
 
-      await loadBillingData();
+      await reloadBillingData();
     } catch (requestError: any) {
       const detail =
         requestError?.response?.data?.detail ||
@@ -766,6 +762,15 @@ function Subscriptions() {
       </div>
     </div>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+function Subscriptions() {
+  const { activeOrganizationId } = useOrganization();
+
+  return <SubscriptionsPage key={activeOrganizationId ?? "none"} />;
 }
 
 export default Subscriptions;

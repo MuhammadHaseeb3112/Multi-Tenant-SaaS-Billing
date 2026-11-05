@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Search, RefreshCw } from "lucide-react";
 
@@ -6,41 +6,46 @@ import { useOrganization } from "../../context/OrganizationContext";
 import { getAuditLogs } from "../../api/audit";
 import type { AuditLog } from "../../api/audit";
 
-function Audit() {
+function AuditPage() {
   const navigate = useNavigate();
   const { activeOrganizationId } = useOrganization();
   const organizationId = activeOrganizationId;
 
 
   const [logs, setLogs] = useState<AuditLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(organizationId));
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
-  const loadLogs = async () => {
+  // Fetches and stores data; sets no state before the request, so it can
+  // run straight from the mount effect.
+  const fetchLogs = useCallback(async () => {
     if (!organizationId) {
-      setLogs([]);
-      setLoading(false);
       return;
     }
 
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getAuditLogs(organizationId);
-      setLogs(data);
-    } catch (err) {
-      console.error("Failed to load audit logs:", err);
-      setError("Failed to load activity.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    await getAuditLogs(organizationId)
+      .then((data) => {
+        setLogs(data);
+        setError("");
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load audit logs:", err);
+        setError("Failed to load activity.");
+      })
+      .finally(() => setLoading(false));
+  }, [organizationId]);
 
   useEffect(() => {
-    loadLogs();
-  }, [organizationId]);
+    void fetchLogs();
+  }, [fetchLogs]);
+
+  // Refresh button.
+  const loadLogs = () => {
+    setLoading(true);
+    setError("");
+    void fetchLogs();
+  };
 
   const filteredLogs = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -374,6 +379,15 @@ function Audit() {
       </div>
     </div>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+function Audit() {
+  const { activeOrganizationId } = useOrganization();
+
+  return <AuditPage key={activeOrganizationId ?? "none"} />;
 }
 
 export default Audit;

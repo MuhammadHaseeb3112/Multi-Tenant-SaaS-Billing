@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   ChevronDown,
@@ -34,7 +34,7 @@ interface InvoiceFormItem {
   unit_price: string;
 }
 
-function Invoices() {
+function InvoicesPage() {
   const { activeOrganization } = useOrganization();
   const organizationId = activeOrganization?.id ?? null;
 
@@ -45,7 +45,7 @@ function Invoices() {
   const { isFinance } = useOrgRole();
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(Boolean(organizationId));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -77,36 +77,44 @@ function Invoices() {
     },
   ]);
 
-  const loadInvoices = async (refresh = false) => {
+  // Fetches and stores data; sets no state before the request, so it can
+  // run straight from the mount effect.
+  const fetchInvoices = useCallback(async () => {
     if (!organizationId) {
-      setInvoices([]);
-      setIsLoading(false);
       return;
     }
 
-    try {
-      if (refresh) {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-
-      setError("");
-
-      const data = await getInvoices(organizationId);
-      setInvoices(data);
-    } catch (err) {
-      console.error("Failed to load invoices:", err);
-      setError("Unable to load invoices. Please try again.");
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  };
+    await getInvoices(organizationId)
+      .then((data) => {
+        setInvoices(data);
+        setError("");
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load invoices:", err);
+        setError("Unable to load invoices. Please try again.");
+      })
+      .finally(() => {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      });
+  }, [organizationId]);
 
   useEffect(() => {
-    void loadInvoices();
-  }, [organizationId]);
+    void fetchInvoices();
+  }, [fetchInvoices]);
+
+  // Refresh button and after create / send / pay.
+  const loadInvoices = async (refresh = false) => {
+    if (refresh) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    setError("");
+
+    await fetchInvoices();
+  };
 
   const filteredInvoices = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
@@ -1039,6 +1047,15 @@ function Invoices() {
       )}
     </div>
   );
+}
+
+// Remount the page when the active organization changes, so every piece
+// of state (loading flags, data, errors) starts fresh for the new org and
+// a slow response for the previous org can never overwrite the new one.
+function Invoices() {
+  const { activeOrganizationId } = useOrganization();
+
+  return <InvoicesPage key={activeOrganizationId ?? "none"} />;
 }
 
 export default Invoices;
