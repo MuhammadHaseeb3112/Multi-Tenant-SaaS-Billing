@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Django tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: saas_billing_backend_api
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: saas_billing
+          POSTGRES_USER: saas_billing
+          POSTGRES_PASSWORD: saas_billing
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U saas_billing -d saas_billing"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    # Dummy values only: Stripe is mocked in the test suite.
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      DJANGO_SECRET_KEY: ci-only-not-a-secret
+      DB_NAME: saas_billing
+      DB_USER: saas_billing
+      DB_PASSWORD: saas_billing
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      STRIPE_SECRET_KEY: sk_test_ci_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      STRIPE_SUCCESS_URL: http://localhost:5173/subscriptions
+      STRIPE_CANCEL_URL: http://localhost:5173/subscriptions
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries for WeasyPrint (PDF invoices)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libpango-1.0-0 libpangocairo-1.0-0 libcairo2 \
+            libgdk-pixbuf-2.0-0 shared-mime-info fonts-dejavu
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: saas_billing_backend_api/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Django system check
+        run: python manage.py check
+
+      - name: No missing migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Tests
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend (lint, type-check, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: saas_billing_frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: saas_billing_frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - name: Type-check and build
+        run: npm run build

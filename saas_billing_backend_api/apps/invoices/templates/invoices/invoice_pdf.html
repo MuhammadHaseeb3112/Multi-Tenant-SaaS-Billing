@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            color: #222;
+            font-size: 12px;
+        }
+
+        .header {
+            width: 100%;
+            margin-bottom: 30px;
+        }
+
+        .header-left {
+            float: left;
+        }
+
+        .header-right {
+            float: right;
+            text-align: right;
+        }
+
+        .clearfix {
+            clear: both;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+
+        .invoice-number {
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        .details {
+            margin-top: 30px;
+            margin-bottom: 30px;
+        }
+
+        .details table {
+            width: 100%;
+        }
+
+        .details td {
+            padding: 5px;
+            vertical-align: top;
+        }
+
+        .label {
+            font-weight: bold;
+        }
+
+        .items {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .items th {
+            background-color: #eeeeee;
+            border: 1px solid #cccccc;
+            padding: 10px;
+            text-align: left;
+        }
+
+        .items td {
+            border: 1px solid #cccccc;
+            padding: 10px;
+        }
+
+        .number {
+            text-align: right;
+        }
+
+        .totals {
+            width: 40%;
+            margin-left: auto;
+            margin-top: 20px;
+            border-collapse: collapse;
+        }
+
+        .totals td {
+            padding: 8px;
+        }
+
+        .total-row {
+            font-size: 15px;
+            font-weight: bold;
+            border-top: 2px solid #222;
+        }
+
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 10px;
+            color: #777;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+
+        <div class="header-left">
+            <h1>INVOICE</h1>
+            <div class="invoice-number">
+                {{ invoice.invoice_number }}
+            </div>
+        </div>
+
+        <div class="header-right">
+            <strong>SAAS BILLING</strong><br>
+            {{ invoice.billing_email }}
+        </div>
+
+        <div class="clearfix"></div>
+    </div>
+
+
+    <div class="details">
+
+        <table>
+            <tr>
+                <td>
+                    <span class="label">Issue Date:</span>
+                    {{ invoice.issue_date }}
+                </td>
+
+                <td>
+                    <span class="label">Due Date:</span>
+                    {{ invoice.due_date }}
+                </td>
+
+                <td>
+                    <span class="label">Currency:</span>
+                    {{ invoice.currency }}
+                </td>
+
+                <td>
+                    <span class="label">Status:</span>
+                    {{ invoice.status }}
+                </td>
+            </tr>
+        </table>
+
+    </div>
+
+
+    <table class="items">
+
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th class="number">Quantity</th>
+                <th class="number">Unit Price</th>
+                <th class="number">Amount</th>
+            </tr>
+        </thead>
+
+        <tbody>
+
+            {% for item in invoice.items.all %}
+
+            <tr>
+                <td>{{ item.description }}</td>
+                <td class="number">{{ item.quantity }}</td>
+                <td class="number">{{ item.unit_price }}</td>
+                <td class="number">{{ item.amount }}</td>
+            </tr>
+
+            {% endfor %}
+
+        </tbody>
+
+    </table>
+
+
+    <table class="totals">
+
+        <tr>
+            <td>Subtotal:</td>
+            <td class="number">{{ invoice.subtotal }}</td>
+        </tr>
+
+        <tr>
+            <td>Tax:</td>
+            <td class="number">{{ invoice.tax }}</td>
+        </tr>
+
+        <tr class="total-row">
+            <td>Total:</td>
+            <td class="number">{{ invoice.total }}</td>
+        </tr>
+
+    </table>
+
+
+    <div class="footer">
+        Thank you for your business.
+    </div>
+
+</body>
+
+</html>

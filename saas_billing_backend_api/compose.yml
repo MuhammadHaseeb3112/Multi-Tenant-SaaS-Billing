@@ -1,0 +1,247 @@
+services:
+
+  # ===========================================================================
+  # PostgreSQL
+  # ===========================================================================
+
+  postgres:
+    image: postgres:18
+    container_name: saas_billing_postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ===========================================================================
+  # Redis
+  # ===========================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: saas_billing_redis
+    restart: unless-stopped
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ===========================================================================
+  # Django API
+  # ===========================================================================
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: saas_billing_web
+    restart: unless-stopped
+
+    command: >
+      gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      USE_X_FORWARDED_PROTO: ${USE_X_FORWARDED_PROTO:-False}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      REDIS_URL: redis://redis:6379/0
+
+      SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
+
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-True}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@saasbilling.local}
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ===========================================================================
+  # Celery Worker
+  # ===========================================================================
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: saas_billing_celery
+    restart: unless-stopped
+
+    command: >
+      celery -A config.celery worker --loglevel=info
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      USE_X_FORWARDED_PROTO: ${USE_X_FORWARDED_PROTO:-False}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      REDIS_URL: redis://redis:6379/0
+
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-True}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@saasbilling.local}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ===========================================================================
+  # Celery Beat
+  # ===========================================================================
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: saas_billing_celery_beat
+    restart: unless-stopped
+
+    command: >
+      celery -A config.celery beat --loglevel=info
+
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      USE_X_FORWARDED_PROTO: ${USE_X_FORWARDED_PROTO:-False}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres
+      DB_PORT: 5432
+
+      REDIS_URL: redis://redis:6379/0
+
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
+      STRIPE_CANCEL_URL: ${STRIPE_CANCEL_URL}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
+      EMAIL_BACKEND: ${EMAIL_BACKEND:-django.core.mail.backends.console.EmailBackend}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS:-True}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@saasbilling.local}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ===========================================================================
+  # Stripe CLI — forwards Stripe TEST-MODE webhooks to the web container
+  # ===========================================================================
+  #
+  # Without this, webhooks only arrive while someone runs `stripe listen`
+  # by hand, and every event sent while it is closed is missed
+  # (subscription changes never reach the local database).
+  #
+  # Setup (once):
+  #   1. DJANGO_ALLOWED_HOSTS in .env must include: web
+  #      (e.g. localhost,127.0.0.1,web)
+  #   2. Get the signing secret this listener uses:
+  #        docker compose run --rm stripe-cli listen --api-key %STRIPE_SECRET_KEY% --device-name saas-billing-docker --print-secret
+  #      Put the printed whsec_... value in .env as STRIPE_WEBHOOK_SECRET,
+  #      then: docker compose up -d
+  #
+  # Only use a TEST-mode key (sk_test_...) here.
+
+  stripe-cli:
+    image: stripe/stripe-cli:latest
+
+    container_name: saas_billing_stripe_cli
+    restart: unless-stopped
+
+    command: >
+      listen
+      --api-key ${STRIPE_SECRET_KEY}
+      --device-name saas-billing-docker
+      --forward-to http://web:8000/api/webhooks/stripe/
+
+    depends_on:
+      - web
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+
+volumes:
+  postgres_data:
+  redis_data:
