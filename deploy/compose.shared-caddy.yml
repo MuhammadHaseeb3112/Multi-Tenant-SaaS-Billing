@@ -1,0 +1,31 @@
+# Run SaaS Billing next to another project whose Caddy already owns ports
+# 80/443 (e.g. MHTalk on the same Oracle VM). This stack's own Caddy is
+# switched off and its nginx joins the shared "edge" network, where the
+# other Caddy reaches it as  saas-billing-frontend:80.
+#
+#   docker network create edge        # once per server
+#   docker compose -f deploy/compose.prod.yml -f deploy/compose.shared-caddy.yml \
+#     --env-file deploy/.env.prod up -d --build
+#
+# The other Caddy needs a site block:
+#   billing.example.com {
+#       reverse_proxy saas-billing-frontend:80
+#   }
+#
+# Only Caddy and this nginx are on "edge": the backend ("web") stays on this
+# stack's own network, so it never clashes with another project's "web".
+
+services:
+  caddy:
+    profiles: ["own-caddy"]
+
+  frontend:
+    networks:
+      default: {}
+      edge:
+        aliases:
+          - saas-billing-frontend
+
+networks:
+  edge:
+    external: true

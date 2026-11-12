@@ -33,6 +33,25 @@ Browser ─HTTPS─▶ Caddy ─▶ nginx (React build, /api /admin /static prox
 Everything is served from **one origin**, so the httpOnly refresh cookie
 is first-party (no third-party-cookie problems, no CORS).
 
+### Sharing a server with another Caddy
+
+If another project on the server already runs Caddy on ports 80/443, use
+`deploy/compose.shared-caddy.yml`: it switches this stack's Caddy off and
+puts only the nginx container on a shared `edge` network as
+`saas-billing-frontend`. Add a site block to the other Caddy:
+
+```
+billing.example.com {
+    reverse_proxy saas-billing-frontend:80
+}
+```
+
+```bash
+docker network create edge     # once
+docker compose -f deploy/compose.prod.yml -f deploy/compose.shared-caddy.yml \
+  --env-file deploy/.env.prod up -d --build
+```
+
 The rest of this guide explains the pieces and what to change for a
 bigger production setup.
 

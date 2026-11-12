@@ -7,6 +7,7 @@ import stripe
 
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -1946,3 +1947,34 @@ class UpgradeRequiresPaymentTests(BillingTestBase):
         self.assertEqual(
             response.status_code, status.HTTP_402_PAYMENT_REQUIRED,
         )
+
+
+class SubscriptionDunningFieldsTests(BillingTestBase):
+    """The API exposes the dunning state so the UI can warn the team."""
+
+    def test_past_due_subscription_reports_grace_period(self):
+        self.authenticate(self.admin)
+
+        grace_end = timezone.now() + timedelta(days=7)
+        self.subscription.status = Subscription.Status.PAST_DUE
+        self.subscription.payment_failed_at = timezone.now()
+        self.subscription.grace_period_end = grace_end
+        self.subscription.save()
+
+        response = self.client.get(self.subscription_url())
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["status"], "PAST_DUE")
+        self.assertIsNotNone(response.data["payment_failed_at"])
+        self.assertEqual(
+            parse_datetime(response.data["grace_period_end"]),
+            grace_end,
+        )
+
+    def test_healthy_subscription_has_no_dunning_dates(self):
+        self.authenticate(self.admin)
+
+        response = self.client.get(self.subscription_url())
+
+        self.assertIsNone(response.data["payment_failed_at"])
+        self.assertIsNone(response.data["grace_period_end"])

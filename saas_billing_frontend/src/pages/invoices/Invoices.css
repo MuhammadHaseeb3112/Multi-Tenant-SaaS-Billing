@@ -558,15 +558,25 @@
 
     .invoice-table-card {
         overflow-x: auto;
+        /* Lets the expanded panel size itself to the visible card. */
+        container-type: inline-size;
     }
 
+    /* The wrapper is as wide as its row, so the sticky panel inside it
+       has room to stay put while the row scrolls. */
     .invoice-table-header,
-    .invoice-table-row {
+    .invoice-table-row,
+    .invoice-row-wrapper {
         min-width: 900px;
     }
 
+    /* The rows scroll sideways; the expanded panel stays in view at
+       the card's visible width instead of scrolling away with them. */
     .invoice-details {
-        min-width: 900px;
+        position: sticky;
+        left: 0;
+        width: 100cqw;
+        box-sizing: border-box;
     }
 }
 
@@ -612,6 +622,20 @@
 
     .secondary-button {
         width: 100%;
+    }
+
+    .invoice-details {
+        padding: 18px 16px 20px;
+    }
+
+    .invoice-details-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* Long emails wrap instead of being cut off. */
+    .invoice-details-grid strong {
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 }
 

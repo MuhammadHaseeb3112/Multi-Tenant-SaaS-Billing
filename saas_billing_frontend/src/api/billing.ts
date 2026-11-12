@@ -23,6 +23,8 @@ export interface Subscription {
   trial_end: string | null;
   cancel_at_period_end: boolean;
   canceled_at: string | null;
+  payment_failed_at?: string | null;
+  grace_period_end?: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   created_at: string;

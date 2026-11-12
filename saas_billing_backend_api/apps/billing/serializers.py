@@ -48,6 +48,9 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "trial_end",
             "cancel_at_period_end",
             "canceled_at",
+            # Dunning state, so the UI can warn before the downgrade.
+            "payment_failed_at",
+            "grace_period_end",
             "stripe_customer_id",
             "stripe_subscription_id",
             "created_at",

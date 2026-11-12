@@ -13,7 +13,9 @@ import {
 } from "../../api/billing";
 
 import { useOrganization } from "../../context/OrganizationContext";
+import { notifySubscriptionChanged } from "../../hooks/usePastDueSubscription";
 import { useOrgRole } from "../../utils/roles";
+import { waitFor } from "../../utils/waitFor";
 
 import "./Subscriptions.css";
 
@@ -160,11 +162,46 @@ function SubscriptionsPage() {
     void loadBillingData();
   }, [loadBillingData]);
 
+  // Back from Stripe Checkout (?checkout=success): the subscription is
+  // activated by webhook, so wait for the paid plan instead of showing
+  // the old one until a manual refresh.
+  useEffect(() => {
+    const returnedFromCheckout =
+      new URLSearchParams(window.location.search).get("checkout") ===
+      "success";
+
+    if (!organizationId || !returnedFromCheckout) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void waitFor(
+      () => getSubscription(organizationId),
+      (latest) => latest.plan.code !== "FREE" && latest.status === "ACTIVE",
+      { attempts: 10 },
+    ).then((latest) => {
+      if (cancelled || !latest) {
+        return;
+      }
+
+      setSubscription(latest);
+      notifySubscriptionChanged();
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId]);
+
   const reloadBillingData = async () => {
     setIsLoading(true);
     setError(null);
 
     await loadBillingData();
+
+    // Keep the overdue-payment banner in step with this page.
+    notifySubscriptionChanged();
   };
 
   const currentPlanCode =
@@ -247,6 +284,14 @@ function SubscriptionsPage() {
       setMessage(
         response.detail ||
           "Subscription change submitted successfully.",
+      );
+
+      // Stripe confirms the change by webhook a moment later: keep
+      // checking for a few seconds so the new plan shows by itself.
+      await waitFor(
+        () => getSubscription(organizationId),
+        (latest) =>
+          latest.plan.code === planCode && latest.interval === interval,
       );
 
       await reloadBillingData();

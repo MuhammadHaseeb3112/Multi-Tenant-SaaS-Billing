@@ -3,6 +3,7 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { IconMenu } from "../../pages/dashboard/icons";
+import BillingAlert from "./BillingAlert";
 import Sidebar from "./Sidebar";
 import { LayoutContext } from "./layoutContext";
 
@@ -63,6 +64,8 @@ export default function AppLayout() {
               </span>
             </header>
           )}
+
+          <BillingAlert />
 
           {/* Keyed by path so each page change replays the entrance. */}
           <div key={pathname} className="app-route-progress" aria-hidden />
