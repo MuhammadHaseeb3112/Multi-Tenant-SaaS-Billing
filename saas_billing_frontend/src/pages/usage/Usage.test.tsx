@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { renderWithOrg } from "../../test/utils";
@@ -74,7 +74,11 @@ describe("Usage page", () => {
       await screen.findByPlaceholderText(/Key name/),
     ).toBeInTheDocument();
     expect(screen.getByText("Manual Adjustment")).toBeInTheDocument();
-    expect(api.listApiKeys).toHaveBeenCalledWith("org-acme");
+    // The keys panel loads in an effect; on a slow CI runner the input
+    // can render before that call is made, so wait for it.
+    await waitFor(() =>
+      expect(api.listApiKeys).toHaveBeenCalledWith("org-acme"),
+    );
   });
 
   it("members cannot manage keys or record usage", async () => {
