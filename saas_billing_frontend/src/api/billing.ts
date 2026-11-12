@@ -114,3 +114,17 @@ export const resumeSubscription = async (
 
   return response.data;
 };
+export interface BillingPortalResponse {
+  url: string;
+}
+
+// Stripe Customer Portal: lets an admin update the card on file.
+export const openBillingPortal = async (
+  organizationId: string,
+): Promise<BillingPortalResponse> => {
+  const response = await apiClient.post<BillingPortalResponse>(
+    `/billing/organizations/${organizationId}/billing-portal/`,
+  );
+
+  return response.data;
+};

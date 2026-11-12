@@ -1978,3 +1978,89 @@ class SubscriptionDunningFieldsTests(BillingTestBase):
 
         self.assertIsNone(response.data["payment_failed_at"])
         self.assertIsNone(response.data["grace_period_end"])
+
+
+class BillingPortalTests(BillingTestBase):
+    """
+    Stripe Customer Portal: admins update the card on file.
+    """
+
+    def portal_url(self, organization=None):
+        organization = organization or self.organization
+        return reverse(
+            "organization-billing-portal",
+            kwargs={"organization_id": organization.id},
+        )
+
+    @patch("apps.billing.views.stripe.billing_portal.Session.create")
+    def test_admin_gets_portal_url(self, mock_create):
+        mock_create.return_value = SimpleNamespace(
+            url="https://billing.stripe.com/p/session/test_123"
+        )
+        self.authenticate(self.admin)
+
+        response = self.client.post(self.portal_url())
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(
+            response.data["url"],
+            "https://billing.stripe.com/p/session/test_123",
+        )
+        kwargs = mock_create.call_args.kwargs
+        self.assertEqual(kwargs["customer"], "cus_test_acme")
+        self.assertTrue(kwargs["return_url"].endswith("/subscriptions"))
+        self.assertTrue(
+            AuditLog.objects.filter(
+                organization=self.organization,
+                action="BILLING_PORTAL_OPENED",
+            ).exists()
+        )
+
+    @patch("apps.billing.views.stripe.billing_portal.Session.create")
+    def test_member_cannot_open_portal(self, mock_create):
+        self.authenticate(self.member)
+
+        response = self.client.post(self.portal_url())
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        mock_create.assert_not_called()
+
+    @patch("apps.billing.views.stripe.billing_portal.Session.create")
+    def test_cannot_open_other_organization_portal(self, mock_create):
+        self.authenticate(self.admin)
+
+        response = self.client.post(
+            self.portal_url(self.other_organization)
+        )
+
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+        )
+        mock_create.assert_not_called()
+
+    @patch("apps.billing.views.stripe.billing_portal.Session.create")
+    def test_no_stripe_customer_returns_400(self, mock_create):
+        self.subscription.stripe_customer_id = None
+        self.subscription.save(update_fields=["stripe_customer_id"])
+        self.authenticate(self.admin)
+
+        response = self.client.post(self.portal_url())
+
+        self.assertEqual(
+            response.status_code, status.HTTP_400_BAD_REQUEST
+        )
+        mock_create.assert_not_called()
+
+    @patch("apps.billing.views.stripe.billing_portal.Session.create")
+    def test_stripe_error_returns_502(self, mock_create):
+        mock_create.side_effect = stripe.error.APIConnectionError(
+            "down"
+        )
+        self.authenticate(self.admin)
+
+        response = self.client.post(self.portal_url())
+
+        self.assertEqual(
+            response.status_code, status.HTTP_502_BAD_GATEWAY
+        )

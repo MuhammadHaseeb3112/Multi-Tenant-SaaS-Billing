@@ -18,6 +18,8 @@ import random
 from datetime import date, timedelta
 from decimal import Decimal
 
+import stripe
+from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
@@ -158,18 +160,77 @@ class Command(BaseCommand):
                     "api_request_limit": limit,
                     "overage_price_per_1000": Decimal(overage),
                     "max_overage_requests": cap,
-                    # Stripe test price IDs, if configured for checkout.
-                    "stripe_monthly_price_id": os.environ.get(
-                        f"DEMO_STRIPE_{code}_MONTHLY_PRICE"
-                    ) or None,
-                    "stripe_annual_price_id": os.environ.get(
-                        f"DEMO_STRIPE_{code}_ANNUAL_PRICE"
-                    ) or None,
                 },
             )
             plans[code] = plan
 
+        self.fill_stripe_prices(plans)
         return plans
+
+    def fill_stripe_prices(self, plans):
+        """
+        Give paid plans their Stripe price IDs so "Upgrade" works in
+        the demo. Prices from DEMO_STRIPE_<CODE>_<INTERVAL>_PRICE win;
+        otherwise look up the active recurring USD prices in the
+        Stripe account and match them by amount and interval. A plan
+        is only changed when exactly one price matches.
+        """
+        missing = [
+            plan
+            for plan in plans.values()
+            if plan.monthly_price > 0
+            and not (plan.stripe_monthly_price_id and plan.stripe_annual_price_id)
+        ]
+        if not missing:
+            return
+
+        prices = None
+        for plan in missing:
+            changed = []
+            for field, interval, amount, env_name in (
+                ("stripe_monthly_price_id", "month", plan.monthly_price,
+                 f"DEMO_STRIPE_{plan.code}_MONTHLY_PRICE"),
+                ("stripe_annual_price_id", "year", plan.annual_price,
+                 f"DEMO_STRIPE_{plan.code}_ANNUAL_PRICE"),
+            ):
+                if getattr(plan, field):
+                    continue
+                price_id = os.environ.get(env_name)
+                if not price_id:
+                    if prices is None:
+                        prices = self.stripe_prices()
+                    cents = int(amount * 100)
+                    matches = [
+                        p_id for p_id, p_interval, p_cents in prices
+                        if p_interval == interval and p_cents == cents
+                    ]
+                    if len(matches) == 1:
+                        price_id = matches[0]
+                if price_id and not Plan.objects.filter(
+                    **{field: price_id}
+                ).exists():
+                    setattr(plan, field, price_id)
+                    changed.append(field)
+            if changed:
+                plan.save(update_fields=changed + ["updated_at"])
+                self.stdout.write(f"Stripe prices set for {plan.code}.")
+
+    def stripe_prices(self):
+        """(price_id, interval, amount_in_cents) of active USD prices."""
+        key = settings.STRIPE_SECRET_KEY or ""
+        if not key.startswith(("sk_test_", "sk_live_")) or "xxx" in key:
+            return []
+        try:
+            stripe.api_key = key
+            result = stripe.Price.list(active=True, type="recurring", limit=100)
+            return [
+                (p.id, p.recurring.interval, p.unit_amount)
+                for p in result.auto_paging_iter()
+                if p.currency == "usd" and p.unit_amount is not None
+            ]
+        except Exception as exc:  # demo seeding must never fail on Stripe
+            self.stdout.write(f"Could not read Stripe prices: {exc}")
+            return []
 
     def user(self, email, first, last, password):
         return User.objects.create_user(

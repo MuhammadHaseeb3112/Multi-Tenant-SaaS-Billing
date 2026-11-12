@@ -1,7 +1,7 @@
 # SaaS Billing — Multi-Tenant Subscription & Usage-Based Billing Platform
 
 [![CI](https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing/actions/workflows/ci.yml/badge.svg)](https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-668%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-678%20passing-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![Django](https://img.shields.io/badge/Django-6-092E20?logo=django&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
@@ -35,7 +35,7 @@ Stripe · React 19 · TypeScript · Vite · Recharts · Docker
 | **Multi-tenancy** | Users belong to many organizations; every query is scoped by organization; role-based access (Owner, Admin, Accountant, Member) enforced in the API. |
 | **Subscriptions (Stripe)** | Stripe Checkout for FREE / PRO / ENTERPRISE (monthly or annual), cancel / resume, one Stripe customer per org, blocks a second paid subscription (no double billing). **Upgrades are paid up front**: the prorated difference is charged immediately and the plan changes only if the payment succeeds (`pending_if_incomplete`); a declined card leaves the plan untouched. Downgrades switch at once with a credit. |
 | **Webhooks** | Signature-verified, stored and **idempotent** (replays are safe). Handles checkout, `invoice.paid / payment_succeeded / payment_failed / created`, subscription updated / deleted. Compatible with Stripe API `2025-03-31+` invoice shape. |
-| **Failed payments** | A failed renewal sets PAST_DUE with a 7-day grace period, then an automatic downgrade to FREE that also **cancels the Stripe subscription**. A declined upgrade charge does *not* start dunning. Scheduled reminders for overdue invoices (Celery Beat). |
+| **Failed payments** | A failed renewal sets PAST_DUE with a 7-day grace period, then an automatic downgrade to FREE that also **cancels the Stripe subscription**. A declined upgrade charge does *not* start dunning. Scheduled reminders for overdue invoices (Celery Beat). Admins update the card through the **Stripe Customer Portal**. |
 | **Metered API product** | "Text Insights API" (`/api/v1/`) authenticated with hashed **API keys** (shown once, revocable). Every call is metered; limits enforced under a DB row lock (verified with concurrent requests). |
 | **Usage-based billing** | Paid plans can go over their limit (price per 1,000 requests, safety cap). At renewal the overage of the closed period is added to Stripe's draft invoice — **never billed twice** (DB constraint + Stripe idempotency key). |
 | **Invoices & payments** | Invoice CRUD with locked non-draft fields; tax-only or zero invoices are rejected; drafts can be deleted, issued invoices are voided. "Create & send" emails the invoice with a **signed public payment link** (`/pay/<token>`, no login); resending issues a new link and expires the old ones. Manual "mark as paid" / void, OVERDUE status. Stripe invoices mirrored locally; `Payment` ledger for Stripe and manual payments; backfill command. |
@@ -213,10 +213,10 @@ without overage → `429`.
 
 ```bash
 cd saas_billing_backend_api
-docker compose exec web pytest -q      # 553 backend tests
+docker compose exec web pytest -q      # 562 backend tests
 
 cd ../saas_billing_frontend
-npm test                               # 115 frontend tests (Vitest + Testing Library)
+npm test                               # 116 frontend tests (Vitest + Testing Library)
 ```
 
 Stripe is mocked in tests. Bug fixes come with regression tests that fail

@@ -11,6 +11,7 @@ from rest_framework.test import APIClient, APITestCase
 from apps.accounts.models import User
 from apps.audit.models import AuditLog
 from apps.audit.services import create_audit_log
+from apps.billing.models import Plan
 from apps.invoices.models import Payment
 from apps.tenants.models import Membership, Organization
 from apps.usage.models import ApiKey, UsageRecord
@@ -126,6 +127,15 @@ class BoundedListTests(APITestCase):
 
 class SeedDemoTests(APITestCase):
 
+    def setUp(self):
+        # Never call Stripe from tests; individual tests override this.
+        patcher = patch(
+            "apps.core.management.commands.seed_demo.Command.stripe_prices",
+            return_value=[],
+        )
+        self.stripe_prices = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def run_seed(self, *args):
         call_command("seed_demo", *args, stdout=StringIO())
 
@@ -228,3 +238,69 @@ class SeedDemoTests(APITestCase):
 
         self.assertTrue(Organization.objects.filter(pk=real.pk).exists())
         self.assertTrue(User.objects.filter(email="ceo@real.com").exists())
+
+
+class SeedDemoStripePriceTests(APITestCase):
+
+    @patch(
+        "apps.core.management.commands.seed_demo.Command.stripe_prices",
+        return_value=[
+            ("price_pro_m", "month", 2900),
+            ("price_pro_y", "year", 29000),
+            ("price_ent_m", "month", 9900),
+            ("price_ent_y", "year", 99000),
+            ("price_other", "month", 1500),
+        ],
+    )
+    def test_matches_stripe_prices_by_amount_and_interval(self, _prices):
+        call_command("seed_demo", stdout=StringIO())
+
+        pro = Plan.objects.get(code="PRO")
+        enterprise = Plan.objects.get(code="ENTERPRISE")
+        self.assertEqual(pro.stripe_monthly_price_id, "price_pro_m")
+        self.assertEqual(pro.stripe_annual_price_id, "price_pro_y")
+        self.assertEqual(enterprise.stripe_monthly_price_id, "price_ent_m")
+        self.assertEqual(enterprise.stripe_annual_price_id, "price_ent_y")
+        self.assertIsNone(Plan.objects.get(code="FREE").stripe_monthly_price_id)
+
+    @patch(
+        "apps.core.management.commands.seed_demo.Command.stripe_prices",
+        return_value=[
+            ("price_a", "month", 2900),
+            ("price_b", "month", 2900),
+        ],
+    )
+    def test_ambiguous_match_is_left_empty(self, _prices):
+        call_command("seed_demo", stdout=StringIO())
+
+        self.assertIsNone(Plan.objects.get(code="PRO").stripe_monthly_price_id)
+
+    @patch(
+        "apps.core.management.commands.seed_demo.Command.stripe_prices",
+        return_value=[("price_pro_m", "month", 2900)],
+    )
+    def test_existing_plans_without_prices_are_filled(self, _prices):
+        Plan.objects.create(
+            code="PRO", name="Pro", monthly_price=Decimal("29.00"),
+            annual_price=Decimal("290.00"),
+        )
+
+        call_command("seed_demo", stdout=StringIO())
+
+        self.assertEqual(
+            Plan.objects.get(code="PRO").stripe_monthly_price_id,
+            "price_pro_m",
+        )
+
+    @patch(
+        "apps.core.management.commands.seed_demo.Command.stripe_prices",
+        return_value=[("price_from_stripe", "month", 2900)],
+    )
+    @patch.dict("os.environ", {"DEMO_STRIPE_PRO_MONTHLY_PRICE": "price_env"})
+    def test_env_price_wins(self, _prices):
+        call_command("seed_demo", stdout=StringIO())
+
+        self.assertEqual(
+            Plan.objects.get(code="PRO").stripe_monthly_price_id,
+            "price_env",
+        )

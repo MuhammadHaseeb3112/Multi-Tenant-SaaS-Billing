@@ -38,7 +38,7 @@ export default function BillingAlert() {
         <strong>Payment failed.</strong>{" "}
         We could not charge the card for the {subscription.plan.name} plan.
         {isAdmin
-          ? ` Pay the open invoice${deadline}, or this workspace moves to the Free plan.`
+          ? ` Update the card or pay the open invoice${deadline}, or this workspace moves to the Free plan.`
           : ` Unless it is paid${deadline}, this workspace moves to the Free plan. Ask an owner or admin to update billing.`}
       </div>
 

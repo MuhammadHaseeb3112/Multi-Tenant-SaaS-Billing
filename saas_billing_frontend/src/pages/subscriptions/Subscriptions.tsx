@@ -7,6 +7,7 @@ import {
   createCheckout,
   getPlans,
   getSubscription,
+  openBillingPortal,
   resumeSubscription,
   type BillingPlan,
   type Subscription,
@@ -341,6 +342,27 @@ function SubscriptionsPage() {
     }
   };
 
+  const handleUpdatePayment = async () => {
+    if (!organizationId) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError(null);
+    setMessage(null);
+
+    try {
+      const { url } = await openBillingPortal(organizationId);
+      window.location.assign(url);
+    } catch (requestError: any) {
+      setError(
+        requestError?.response?.data?.detail ||
+          "Unable to open the billing portal.",
+      );
+      setActionLoading(false);
+    }
+  };
+
   const handleResume = async () => {
     if (!organizationId) {
       return;
@@ -585,22 +607,36 @@ function SubscriptionsPage() {
               </p>
             </div>
 
-            {isAdmin &&
-              subscription &&
-              !subscription.cancel_at_period_end &&
-              subscription.stripe_subscription_id && (
+            {isAdmin && subscription?.stripe_customer_id && (
+              <div className="subscription-actions">
                 <button
-                  className="cancel-subscription-button"
-                  onClick={() =>
-                    void handleCancel()
+                  className={
+                    subscription.status === "PAST_DUE"
+                      ? "update-payment-button urgent"
+                      : "update-payment-button"
                   }
+                  onClick={() => void handleUpdatePayment()}
                   disabled={actionLoading}
                 >
-                  {actionLoading
-                    ? "Processing..."
-                    : "Cancel subscription"}
+                  Update payment method
                 </button>
-              )}
+
+                {!subscription.cancel_at_period_end &&
+                  subscription.stripe_subscription_id && (
+                    <button
+                      className="cancel-subscription-button"
+                      onClick={() =>
+                        void handleCancel()
+                      }
+                      disabled={actionLoading}
+                    >
+                      {actionLoading
+                        ? "Processing..."
+                        : "Cancel subscription"}
+                    </button>
+                  )}
+              </div>
+            )}
           </div>
 
           <div className="plans-grid">

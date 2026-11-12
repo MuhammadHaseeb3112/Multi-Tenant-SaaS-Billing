@@ -642,3 +642,73 @@ class ResumeSubscriptionView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+class BillingPortalView(APIView):
+    """
+    Open the Stripe Customer Portal for the organization, where an
+    admin can update the card on file (for example after a failed
+    payment). Plan changes stay in this app; the portal is only for
+    payment details and billing info.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+        IsOrganizationAdmin,
+    ]
+
+    def post(self, request, organization_id):
+        subscription = get_object_or_404(
+            Subscription.objects.select_related("organization"),
+            organization_id=organization_id,
+            organization__is_active=True,
+        )
+
+        if not subscription.stripe_customer_id:
+            return Response(
+                {
+                    "detail": (
+                        "This organization has no Stripe billing "
+                        "account yet. Subscribe to a paid plan first."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return_url = (
+            settings.FRONTEND_URL.rstrip("/") + "/subscriptions"
+        )
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+
+        try:
+            portal_session = stripe.billing_portal.Session.create(
+                customer=subscription.stripe_customer_id,
+                return_url=return_url,
+            )
+
+        except stripe.error.StripeError:
+            return Response(
+                {
+                    "detail": (
+                        "Stripe could not open the billing portal."
+                    )
+                },
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        create_audit_log(
+            organization=subscription.organization,
+            user=request.user,
+            action="BILLING_PORTAL_OPENED",
+            resource_type="Subscription",
+            resource_id=subscription.id,
+            description="Stripe billing portal opened.",
+            metadata={
+                "stripe_customer_id": subscription.stripe_customer_id,
+            },
+        )
+
+        return Response(
+            {"url": portal_session.url},
+            status=status.HTTP_201_CREATED,
+        )

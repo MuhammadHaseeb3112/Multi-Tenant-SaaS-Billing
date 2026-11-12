@@ -707,7 +707,30 @@
   color: #b91c1c;
 }
 
+.subscription-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.update-payment-button {
+  border-radius: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  font-weight: 600;
+  background: transparent;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #4f46e5;
+}
+
+.update-payment-button.urgent {
+  border-color: transparent;
+  color: #fff;
+  background: #dc2626;
+}
+
 .billing-warning button:disabled,
+.update-payment-button:disabled,
 .cancel-subscription-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;

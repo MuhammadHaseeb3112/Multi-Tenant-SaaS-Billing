@@ -7,6 +7,7 @@ from .views import (
     OrganizationSubscriptionChangeView,
     OrganizationSubscriptionCancelView,
     ResumeSubscriptionView,
+    BillingPortalView,
 )
 
 
@@ -44,5 +45,11 @@ urlpatterns = [
     "organizations/<uuid:organization_id>/subscription/resume/",
     ResumeSubscriptionView.as_view(),
     name="subscription-resume",
+    ),
+
+    path(
+        "organizations/<uuid:organization_id>/billing-portal/",
+        BillingPortalView.as_view(),
+        name="organization-billing-portal",
     ),
 ]
