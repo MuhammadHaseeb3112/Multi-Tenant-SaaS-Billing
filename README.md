@@ -1,15 +1,16 @@
 # SaaS Billing — Multi-Tenant Subscription & Usage-Based Billing Platform
 
 [![CI](https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing/actions/workflows/ci.yml/badge.svg)](https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing/actions/workflows/ci.yml)
-![Tests](https://img.shields.io/badge/tests-655%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-668%20passing-brightgreen)
 ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)
 ![Django](https://img.shields.io/badge/Django-6-092E20?logo=django&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
 ![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?logo=stripe&logoColor=white)
 
-> **Live demo:** _link coming soon_ — one-click logins for Owner, Accountant
-> and Member; Stripe in test mode (card `4242 4242 4242 4242`).
+> **Live demo:** [mh-saas-billing.duckdns.org](https://mh-saas-billing.duckdns.org)
+> — one-click logins for Owner, Accountant and Member (password `DemoPass123!`);
+> Stripe in test mode (card `4242 4242 4242 4242`). Demo data resets nightly.
 > Locally: `python manage.py seed_demo`, then sign in as `owner@demo.com`,
 > `accountant@demo.com` or `member@demo.com` (password `DemoPass123!`).
 
@@ -212,10 +213,10 @@ without overage → `429`.
 
 ```bash
 cd saas_billing_backend_api
-docker compose exec web pytest -q      # 551 backend tests
+docker compose exec web pytest -q      # 553 backend tests
 
 cd ../saas_billing_frontend
-npm test                               # 104 frontend tests (Vitest + Testing Library)
+npm test                               # 115 frontend tests (Vitest + Testing Library)
 ```
 
 Stripe is mocked in tests. Bug fixes come with regression tests that fail

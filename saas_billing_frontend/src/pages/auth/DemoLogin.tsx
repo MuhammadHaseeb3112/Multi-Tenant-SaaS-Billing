@@ -5,6 +5,9 @@ export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || "DemoPass123!";
 
+export const SOURCE_URL =
+  "https://github.com/MuhammadHaseeb3112/Multi-Tenant-SaaS-Billing";
+
 const ACCOUNTS = [
   { role: "Owner", email: "owner@demo.com", hint: "Full access" },
   { role: "Accountant", email: "accountant@demo.com", hint: "Invoices only" },
@@ -23,7 +26,19 @@ export default function DemoLogin({ onPick, disabled }: DemoLoginProps) {
 
   return (
     <div className="demo-login" role="region" aria-label="Demo accounts">
-      <div className="demo-login-title">Live demo — pick an account</div>
+      <div className="demo-login-badge">Portfolio demo · not a real company</div>
+
+      <p className="demo-login-about">
+        SaaS Billing is an open-source portfolio project by Muhammad Haseeb.
+        All accounts are fake demo data and Stripe runs in test mode, so
+        never enter real passwords or card details here.{" "}
+        <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
+          View the source on GitHub
+        </a>
+        .
+      </p>
+
+      <div className="demo-login-title">Pick a demo account</div>
 
       <div className="demo-login-buttons">
         {ACCOUNTS.map((account) => (
@@ -41,7 +56,8 @@ export default function DemoLogin({ onPick, disabled }: DemoLoginProps) {
       </div>
 
       <div className="demo-login-note">
-        Stripe is in test mode: pay with card 4242 4242 4242 4242.
+        Password for every demo account: <code>{DEMO_PASSWORD}</code>. Test
+        card: 4242 4242 4242 4242, any future date, any CVC.
       </div>
     </div>
   );

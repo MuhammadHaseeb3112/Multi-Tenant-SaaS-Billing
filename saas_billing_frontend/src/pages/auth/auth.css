@@ -236,6 +236,34 @@
     background: rgba(99, 102, 241, 0.08);
 }
 
+.demo-login-badge {
+    display: inline-block;
+    margin-bottom: 8px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    color: #fde68a;
+    background: rgba(245, 158, 11, 0.15);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.demo-login-about {
+    margin: 0 0 12px;
+    color: #cbd5e1;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.demo-login-about a {
+    color: #a5b4fc;
+    font-weight: 600;
+}
+
+.demo-login-note code {
+    color: #e0e7ff;
+}
+
 .demo-login-title {
     margin-bottom: 10px;
     color: #c7d2fe;
