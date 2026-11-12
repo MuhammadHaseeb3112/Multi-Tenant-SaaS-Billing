@@ -24,7 +24,7 @@ pay through a signed public link without an account.
 **Stack:** Django 6 · Django REST Framework · PostgreSQL · Celery + Redis ·
 Stripe · React 19 · TypeScript · Vite · Recharts · Docker
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Demo: one-click login, dashboard, subscriptions, invoices, usage and analytics](docs/screenshots/demo.gif)
 
 ---
 
