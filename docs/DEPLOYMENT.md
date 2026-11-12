@@ -199,3 +199,24 @@ third-party cookies, so same-origin is the robust choice.
 - No end-to-end browser tests in CI (unit/component tests run with Vitest;
   end-to-end flows were verified manually with headless Chrome).
 - Email uses the console backend unless SMTP variables are set.
+
+## Automatic deploys
+
+`deploy/deploy.sh` updates the server to the latest `main`: it tags the
+running images as `:rollback`, pulls, builds, restarts, then waits for the
+backend health check and for `https://$DOMAIN/api/health/` through Caddy. If
+either fails it goes back to the previous commit and images. It uses
+`deploy/compose.shared-caddy.yml` automatically when the external `edge`
+network exists. Run it by hand with `cd ~/saas-billing && bash deploy/deploy.sh`.
+
+`.github/workflows/deploy.yml` runs it over SSH after CI passes on `main`.
+It is off until you set, in the GitHub repository under
+Settings → Secrets and variables → Actions:
+
+- Secrets: `DEPLOY_HOST` (server IP), `DEPLOY_USER` (`ubuntu`),
+  `DEPLOY_SSH_KEY` (the private key you use for SSH)
+- Variables: `DEPLOY_ENABLED` = `true`, `DEPLOY_URL` = `https://your-domain`,
+  optionally `DEPLOY_PATH` (default `~/saas-billing`)
+
+Migrations run on start and are not undone by a rollback, so keep them
+backward compatible.
