@@ -1,0 +1,16 @@
+# HTTPS edge. Caddy obtains and renews a Let's Encrypt certificate for
+# $DOMAIN automatically (the domain's DNS A record must point here).
+# For a local test without a domain set DOMAIN=:80 (plain HTTP).
+
+{$DOMAIN} {
+    encode zstd gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+
+    reverse_proxy frontend:80 {
+        header_up X-Forwarded-Proto {scheme}
+    }
+}

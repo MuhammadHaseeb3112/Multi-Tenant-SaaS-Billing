@@ -25,6 +25,7 @@ from .serializers import (
 )
 from .services import (
     SubscriptionChangeError,
+    SubscriptionPaymentError,
     change_stripe_subscription,
 )
 
@@ -321,10 +322,47 @@ class OrganizationSubscriptionChangeView(APIView):
                 new_interval=interval,
             )
 
+        except SubscriptionPaymentError as exc:
+            create_audit_log(
+                organization=subscription.organization,
+                user=request.user,
+                action="SUBSCRIPTION_UPGRADE_FAILED",
+                resource_type="Subscription",
+                resource_id=subscription.id,
+                description=(
+                    f"Upgrade to {new_plan.name} ({interval}) was not "
+                    f"applied: the payment failed."
+                ),
+                metadata={
+                    "plan": new_plan.code,
+                    "interval": interval,
+                },
+            )
+
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "payment_failed",
+                },
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
         except SubscriptionChangeError as exc:
             return Response(
                 {"detail": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except stripe.error.CardError:
+            return Response(
+                {
+                    "detail": (
+                        "Your card was declined, so your plan was "
+                        "not changed."
+                    ),
+                    "code": "payment_failed",
+                },
+                status=status.HTTP_402_PAYMENT_REQUIRED,
             )
 
         except stripe.error.StripeError:

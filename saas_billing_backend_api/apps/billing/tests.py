@@ -16,7 +16,12 @@ from apps.audit.models import AuditLog
 from apps.tenants.models import Membership, Organization
 
 from .models import Plan, Subscription
-from .services import SubscriptionChangeError, change_stripe_subscription
+from .services import (
+    SubscriptionChangeError,
+    SubscriptionPaymentError,
+    change_stripe_subscription,
+    is_upgrade,
+)
 from .tasks import process_expired_grace_periods
 
 
@@ -934,9 +939,14 @@ class SubscriptionChangeServiceTests(BillingTestBase):
             self.enterprise_plan.stripe_annual_price_id,
         )
 
+        # Pro monthly -> Enterprise annual is an upgrade: paid up front.
         self.assertEqual(
             kwargs["proration_behavior"],
-            "create_prorations",
+            "always_invoice",
+        )
+        self.assertEqual(
+            kwargs["payment_behavior"],
+            "pending_if_incomplete",
         )
 
     def test_change_requires_stripe_subscription_id(self):
@@ -1747,4 +1757,192 @@ class GracePeriodTaskTests(BillingTestBase):
         self.assertEqual(
             second_subscription.status,
             Subscription.Status.ACTIVE,
+        )
+
+def stripe_subscription_with_item(price_id):
+    return {
+        "id": "sub_test_acme",
+        "items": {
+            "data": [
+                {"id": "si_test_item", "price": {"id": price_id}},
+            ]
+        },
+    }
+
+
+class UpgradeRequiresPaymentTests(BillingTestBase):
+    """
+    Upgrades are charged up front and applied only when paid;
+    downgrades switch at once with a credit.
+    """
+
+    def retrieve_returns(self, mock_retrieve):
+        mock_retrieve.return_value.to_dict.return_value = (
+            stripe_subscription_with_item(
+                self.pro_plan.stripe_monthly_price_id
+            )
+        )
+
+    def test_upgrade_detection(self):
+        # Subscription is Pro monthly.
+        self.assertTrue(is_upgrade(
+            self.subscription, self.enterprise_plan, "MONTHLY",
+        ))
+        self.assertTrue(is_upgrade(
+            self.subscription, self.pro_plan, "ANNUAL",
+        ))
+        self.assertFalse(is_upgrade(
+            self.subscription, self.free_plan, "MONTHLY",
+        ))
+
+        self.subscription.plan = self.enterprise_plan
+        self.assertFalse(is_upgrade(
+            self.subscription, self.pro_plan, "MONTHLY",
+        ))
+
+    @patch("apps.billing.services.stripe.Invoice.void_invoice")
+    @patch("apps.billing.services.stripe.Subscription.retrieve")
+    @patch("apps.billing.services.stripe.Subscription.modify")
+    def test_paid_upgrade_is_applied(
+        self, mock_modify, mock_retrieve, mock_void,
+    ):
+        self.retrieve_returns(mock_retrieve)
+        mock_modify.return_value.to_dict.return_value = {
+            "id": "sub_test_acme",
+            "status": "active",
+            "pending_update": None,
+        }
+
+        result = change_stripe_subscription(
+            subscription=self.subscription,
+            new_plan=self.enterprise_plan,
+            new_interval="MONTHLY",
+        )
+
+        self.assertEqual(result["id"], "sub_test_acme")
+        kwargs = mock_modify.call_args.kwargs
+        self.assertEqual(kwargs["proration_behavior"], "always_invoice")
+        self.assertEqual(
+            kwargs["payment_behavior"], "pending_if_incomplete",
+        )
+        mock_void.assert_not_called()
+
+    @patch("apps.billing.services.stripe.Invoice.void_invoice")
+    @patch("apps.billing.services.stripe.Subscription.retrieve")
+    @patch("apps.billing.services.stripe.Subscription.modify")
+    def test_declined_upgrade_is_not_applied(
+        self, mock_modify, mock_retrieve, mock_void,
+    ):
+        self.retrieve_returns(mock_retrieve)
+        mock_modify.return_value.to_dict.return_value = {
+            "id": "sub_test_acme",
+            "status": "active",
+            "latest_invoice": "in_upgrade_123",
+            "pending_update": {"expires_at": 1999999999},
+        }
+
+        with self.assertRaises(SubscriptionPaymentError):
+            change_stripe_subscription(
+                subscription=self.subscription,
+                new_plan=self.enterprise_plan,
+                new_interval="MONTHLY",
+            )
+
+        # The pending change is dropped at once (its invoice voided).
+        mock_void.assert_called_once_with("in_upgrade_123")
+
+    @patch("apps.billing.services.stripe.Invoice.void_invoice")
+    @patch("apps.billing.services.stripe.Subscription.retrieve")
+    @patch("apps.billing.services.stripe.Subscription.modify")
+    def test_void_failure_still_reports_declined(
+        self, mock_modify, mock_retrieve, mock_void,
+    ):
+        self.retrieve_returns(mock_retrieve)
+        mock_modify.return_value.to_dict.return_value = {
+            "latest_invoice": "in_upgrade_123",
+            "pending_update": {"expires_at": 1999999999},
+        }
+        mock_void.side_effect = stripe.error.InvalidRequestError(
+            "already void", None,
+        )
+
+        with self.assertRaises(SubscriptionPaymentError):
+            change_stripe_subscription(
+                subscription=self.subscription,
+                new_plan=self.enterprise_plan,
+                new_interval="MONTHLY",
+            )
+
+    @patch("apps.billing.services.stripe.Subscription.retrieve")
+    @patch("apps.billing.services.stripe.Subscription.modify")
+    def test_downgrade_switches_with_credit(
+        self, mock_modify, mock_retrieve,
+    ):
+        self.subscription.plan = self.enterprise_plan
+        mock_retrieve.return_value.to_dict.return_value = (
+            stripe_subscription_with_item(
+                self.enterprise_plan.stripe_monthly_price_id
+            )
+        )
+        mock_modify.return_value.to_dict.return_value = {
+            "id": "sub_test_acme",
+        }
+
+        change_stripe_subscription(
+            subscription=self.subscription,
+            new_plan=self.pro_plan,
+            new_interval="MONTHLY",
+        )
+
+        kwargs = mock_modify.call_args.kwargs
+        self.assertEqual(kwargs["proration_behavior"], "create_prorations")
+        self.assertNotIn("payment_behavior", kwargs)
+
+    @patch("apps.billing.views.change_stripe_subscription")
+    def test_api_returns_402_and_keeps_plan_on_declined_upgrade(
+        self, mock_change,
+    ):
+        self.authenticate(self.admin)
+        mock_change.side_effect = SubscriptionPaymentError(
+            "Your payment for the upgrade failed."
+        )
+
+        response = self.client.post(
+            self.change_url(),
+            {"plan_code": "ENTERPRISE", "interval": "MONTHLY"},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_402_PAYMENT_REQUIRED,
+        )
+        self.assertEqual(response.data["code"], "payment_failed")
+
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.plan, self.pro_plan)
+
+        self.assertTrue(AuditLog.objects.filter(
+            organization=self.organization,
+            action="SUBSCRIPTION_UPGRADE_FAILED",
+        ).exists())
+        self.assertFalse(AuditLog.objects.filter(
+            organization=self.organization,
+            action="SUBSCRIPTION_CHANGED",
+        ).exists())
+
+    @patch("apps.billing.views.change_stripe_subscription")
+    def test_api_returns_402_on_card_error(self, mock_change):
+        self.authenticate(self.admin)
+        mock_change.side_effect = stripe.error.CardError(
+            "Your card was declined.", None, "card_declined",
+        )
+
+        response = self.client.post(
+            self.change_url(),
+            {"plan_code": "ENTERPRISE", "interval": "MONTHLY"},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code, status.HTTP_402_PAYMENT_REQUIRED,
         )

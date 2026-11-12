@@ -1,0 +1,890 @@
+/* Dashboard layout and components (moved out of Dashboard.tsx). */
+  .saas-dashboard, .saas-dashboard * {
+    box-sizing: border-box;
+  }
+
+  .saas-dashboard {
+    min-height: 100vh;
+    width: 100%;
+    background:
+      radial-gradient(circle at 20% 0%, rgba(99, 102, 241, 0.10), transparent 28%),
+      radial-gradient(circle at 90% 10%, rgba(139, 92, 246, 0.08), transparent 24%),
+      #0a0b10;
+    color: #f8fafc;
+    display: flex;
+    font-family:
+      Inter,
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      "Segoe UI",
+      sans-serif;
+    overflow-x: hidden;
+  }
+
+  .saas-dashboard::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(to bottom, black, transparent 75%);
+  }
+
+  .saas-dashboard .main {
+    width: 100%;
+    min-width: 0;
+    min-height: 100vh;
+  }
+
+  .saas-dashboard .topbar {
+    height: 72px;
+    padding: 0 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(148,163,184,0.10);
+    background: rgba(10,11,16,0.72);
+    backdrop-filter: blur(16px);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+
+  .saas-dashboard .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .saas-dashboard .page-title {
+    font-size: 15px;
+    font-weight: 650;
+    color: #e2e8f0;
+  }
+
+  .saas-dashboard .breadcrumb {
+    color: #475569;
+    font-size: 12px;
+  }
+
+  .saas-dashboard .search {
+    width: 245px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 0 12px;
+    border: 1px solid rgba(148,163,184,0.13);
+    border-radius: 9px;
+    background: rgba(255,255,255,0.025);
+    color: #64748b;
+  }
+
+  .saas-dashboard .search input {
+    width: 100%;
+    border: 0;
+    outline: none;
+    color: #cbd5e1;
+    background: transparent;
+    font-size: 12px;
+  }
+
+  .saas-dashboard .search input::placeholder {
+    color: #475569;
+  }
+
+  .saas-dashboard .top-actions {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .saas-dashboard .icon-button {
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    border: 1px solid rgba(148,163,184,0.12);
+    background: rgba(255,255,255,0.025);
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s ease;
+  }
+
+  .saas-dashboard .icon-button:hover {
+    color: #f8fafc;
+    background: rgba(255,255,255,0.06);
+  }
+
+  .saas-dashboard .notification-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
+    color: #ffffff;
+    font-size: 10.5px;
+    font-weight: 700;
+    line-height: 17px;
+    text-align: center;
+    box-shadow: 0 0 0 2px rgba(10, 14, 26, 0.9);
+  }
+
+  .saas-dashboard .notification-dot {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #818cf8;
+    box-shadow: 0 0 0 3px rgba(129,140,248,0.12);
+  }
+
+  .saas-dashboard .profile {
+    position: relative;
+  }
+
+  .saas-dashboard .profile-button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 7px 4px 4px;
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 10px;
+    background: rgba(255,255,255,0.025);
+    color: #e2e8f0;
+    cursor: pointer;
+  }
+
+  .saas-dashboard .avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .saas-dashboard .profile-name {
+    font-size: 11px;
+    font-weight: 650;
+    max-width: 105px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .saas-dashboard .profile-menu {
+    position: absolute;
+    right: 0;
+    top: 47px;
+    width: 180px;
+    padding: 7px;
+    border-radius: 12px;
+    background: #171923;
+    border: 1px solid rgba(148,163,184,0.15);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35);
+    animation: dropdown 0.16s ease-out;
+    z-index: 100;
+  }
+
+  @keyframes dropdown {
+    from {
+      opacity: 0;
+      transform: translateY(-5px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .saas-dashboard .profile-menu-header {
+    padding: 9px;
+    border-bottom: 1px solid rgba(148,163,184,0.09);
+    margin-bottom: 5px;
+  }
+
+  .saas-dashboard .profile-menu-name {
+    font-size: 12px;
+    font-weight: 650;
+  }
+
+  .saas-dashboard .profile-menu-email {
+    color: #64748b;
+    font-size: 10px;
+    margin-top: 3px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .saas-dashboard .menu-button {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: #94a3b8;
+    padding: 9px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  .saas-dashboard .menu-button:hover {
+    color: #f8fafc;
+    background: rgba(255,255,255,0.05);
+  }
+
+  .saas-dashboard .menu-button.logout {
+    color: #f87171;
+  }
+
+  .saas-dashboard .content {
+    padding: 30px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  .saas-dashboard .hero {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 20px;
+    margin-bottom: 26px;
+    animation: fadeUp 0.45s ease both;
+  }
+
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .saas-dashboard .hero-eyebrow {
+    color: #818cf8;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+
+  .saas-dashboard .hero h1 {
+    margin: 0;
+    font-size: clamp(25px, 3vw, 34px);
+    letter-spacing: -1.2px;
+    line-height: 1.1;
+  }
+
+  .saas-dashboard .hero p {
+    color: #64748b;
+    margin: 9px 0 0;
+    font-size: 13px;
+  }
+
+  .saas-dashboard .primary-button {
+    border: 0;
+    height: 40px;
+    padding: 0 15px;
+    border-radius: 9px;
+    color: white;
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
+    font-weight: 650;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    box-shadow: 0 8px 25px rgba(99,102,241,0.20);
+    transition: all 0.2s ease;
+  }
+
+  .saas-dashboard .primary-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(99,102,241,0.30);
+  }
+
+  .saas-dashboard .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 15px;
+    margin-bottom: 18px;
+  }
+
+  .saas-dashboard .stat-card {
+    min-height: 143px;
+    padding: 19px;
+    border-radius: 15px;
+    border: 1px solid rgba(148,163,184,0.11);
+    background:
+      linear-gradient(
+        145deg,
+        rgba(255,255,255,0.045),
+        rgba(255,255,255,0.018)
+      );
+    box-shadow: 0 12px 35px rgba(0,0,0,0.12);
+    animation: fadeUp 0.45s ease both;
+    transition:
+      transform 0.22s ease,
+      border-color 0.22s ease,
+      background 0.22s ease;
+  }
+
+  .saas-dashboard .stat-card:nth-child(2) {
+    animation-delay: 0.06s;
+  }
+
+  .saas-dashboard .stat-card:nth-child(3) {
+    animation-delay: 0.12s;
+  }
+
+  .saas-dashboard .stat-card:nth-child(4) {
+    animation-delay: 0.18s;
+  }
+
+  .saas-dashboard .stat-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(129,140,248,0.20);
+    background:
+      linear-gradient(
+        145deg,
+        rgba(255,255,255,0.06),
+        rgba(255,255,255,0.022)
+      );
+  }
+
+  .saas-dashboard .stat-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .saas-dashboard .stat-label {
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .saas-dashboard .stat-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #a5b4fc;
+    background: rgba(99,102,241,0.10);
+    border: 1px solid rgba(129,140,248,0.12);
+  }
+
+  .saas-dashboard .stat-value {
+    font-size: 25px;
+    font-weight: 750;
+    letter-spacing: -0.8px;
+    margin-top: 15px;
+  }
+
+  .saas-dashboard .stat-bottom {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    font-size: 10px;
+    color: #64748b;
+  }
+
+  .saas-dashboard .positive {
+    color: #34d399;
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    font-weight: 650;
+  }
+
+  .saas-dashboard .neutral {
+    color: #818cf8;
+    font-weight: 600;
+  }
+
+  .saas-dashboard .main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.55fr) minmax(320px, 0.85fr);
+    gap: 18px;
+    margin-bottom: 18px;
+  }
+
+  .saas-dashboard .panel {
+    border: 1px solid rgba(148,163,184,0.11);
+    background: rgba(17,19,27,0.75);
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 12px 35px rgba(0,0,0,0.10);
+    animation: fadeUp 0.55s ease both;
+  }
+
+  .saas-dashboard .panel-header {
+    padding: 18px 19px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(148,163,184,0.08);
+  }
+
+  .saas-dashboard .panel-title {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .saas-dashboard .panel-subtitle {
+    color: #64748b;
+    font-size: 10px;
+    margin-top: 4px;
+  }
+
+  .saas-dashboard .period-select {
+    color: #94a3b8;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(148,163,184,0.10);
+    border-radius: 7px;
+    padding: 7px 9px;
+    outline: none;
+    font-size: 10px;
+  }
+
+  .saas-dashboard .chart-container {
+    height: 285px;
+    padding: 18px 19px 15px;
+    position: relative;
+  }
+
+  .saas-dashboard .chart-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  .saas-dashboard .chart-line {
+    stroke-dasharray: 700;
+    stroke-dashoffset: 700;
+    animation: drawChart 1.5s ease forwards;
+  }
+
+  @keyframes drawChart {
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+
+  .saas-dashboard .chart-area {
+    opacity: 0;
+    animation: chartArea 1s ease 0.35s forwards;
+  }
+
+  @keyframes chartArea {
+    to {
+      opacity: 1;
+    }
+  }
+
+  .saas-dashboard .chart-grid-line {
+    stroke: rgba(148,163,184,0.07);
+    stroke-width: 1;
+  }
+
+  .saas-dashboard .chart-label {
+    fill: #475569;
+    font-size: 9px;
+  }
+
+  .saas-dashboard .chart-point {
+    fill: #11131b;
+    stroke: #818cf8;
+    stroke-width: 2;
+    opacity: 0;
+    animation: pointIn 0.3s ease forwards;
+  }
+
+  @keyframes pointIn {
+    to {
+      opacity: 1;
+    }
+  }
+
+  .saas-dashboard .subscription-body {
+    padding: 20px;
+  }
+
+  .saas-dashboard .subscription-plan {
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    margin-bottom: 22px;
+  }
+
+  .saas-dashboard .plan-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow: 0 10px 25px rgba(99,102,241,0.18);
+  }
+
+  .saas-dashboard .plan-name {
+    font-size: 18px;
+    font-weight: 750;
+  }
+
+  .saas-dashboard .plan-description {
+    color: #64748b;
+    font-size: 10px;
+    margin-top: 3px;
+  }
+
+  .saas-dashboard .status-pill {
+    margin-left: auto;
+    padding: 5px 8px;
+    border-radius: 20px;
+    font-size: 9px;
+    color: #34d399;
+    background: rgba(52,211,153,0.08);
+    border: 1px solid rgba(52,211,153,0.14);
+    font-weight: 700;
+  }
+
+  .saas-dashboard .subscription-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .saas-dashboard .info-box {
+    padding: 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(148,163,184,0.07);
+  }
+
+  .saas-dashboard .info-label {
+    color: #64748b;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+  }
+
+  .saas-dashboard .info-value {
+    font-size: 12px;
+    font-weight: 650;
+    margin-top: 5px;
+    color: #cbd5e1;
+  }
+
+  .saas-dashboard .usage-section {
+    margin-top: 22px;
+  }
+
+  .saas-dashboard .usage-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 9px;
+  }
+
+  .saas-dashboard .usage-title {
+    font-size: 10px;
+    color: #94a3b8;
+  }
+
+  .saas-dashboard .usage-number {
+    font-size: 10px;
+    color: #cbd5e1;
+    font-weight: 650;
+  }
+
+  .saas-dashboard .progress {
+    height: 7px;
+    border-radius: 99px;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+  }
+
+  .saas-dashboard .progress-fill {
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #6366f1, #a78bfa);
+    box-shadow: 0 0 16px rgba(99,102,241,0.30);
+    transition: width 0.4s ease;
+  }
+
+  .saas-dashboard .usage-footer {
+    display: flex;
+    justify-content: space-between;
+    color: #475569;
+    font-size: 9px;
+    margin-top: 7px;
+  }
+
+  .saas-dashboard .lower-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 18px;
+  }
+
+  .saas-dashboard .invoice-list {
+    padding: 4px 19px 8px;
+  }
+
+  .saas-dashboard .invoice-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(148,163,184,0.07);
+  }
+
+  .saas-dashboard .invoice-row:last-child {
+    border-bottom: 0;
+  }
+
+  .saas-dashboard .invoice-left {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    min-width: 0;
+  }
+
+  .saas-dashboard .invoice-icon {
+    width: 35px;
+    height: 35px;
+    flex-shrink: 0;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #818cf8;
+    background: rgba(99,102,241,0.08);
+  }
+
+  .saas-dashboard .invoice-number {
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .saas-dashboard .invoice-date {
+    color: #475569;
+    font-size: 9px;
+    margin-top: 3px;
+  }
+
+  .saas-dashboard .invoice-right {
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .saas-dashboard .invoice-amount {
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .saas-dashboard .paid {
+    color: #34d399;
+    font-size: 9px;
+    margin-top: 3px;
+  }
+
+  .saas-dashboard .invoice-status.overdue {
+    color: #fbbf24;
+  }
+
+  .saas-dashboard .activity-list {
+    padding: 8px 19px 12px;
+  }
+
+  .saas-dashboard .activity-item {
+    display: flex;
+    gap: 11px;
+    padding: 12px 0;
+  }
+
+  .saas-dashboard .activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #818cf8;
+    margin-top: 4px;
+    box-shadow: 0 0 0 4px rgba(129,140,248,0.08);
+    flex-shrink: 0;
+  }
+
+  .saas-dashboard .activity-title {
+    font-size: 10px;
+    color: #cbd5e1;
+    line-height: 1.4;
+  }
+
+  .saas-dashboard .activity-time {
+    color: #475569;
+    font-size: 9px;
+    margin-top: 3px;
+  }
+
+  .saas-dashboard .view-all {
+    border: 0;
+    background: transparent;
+    color: #818cf8;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+
+  .saas-dashboard .manage-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 9px;
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    background: rgba(99, 102, 241, 0.12);
+    color: #c7d2fe;
+    font-size: 12px;
+    font-weight: 650;
+    font-family: inherit;
+    cursor: pointer;
+    transition:
+      background 0.2s ease,
+      border-color 0.2s ease,
+      color 0.2s ease,
+      box-shadow 0.2s ease;
+  }
+
+  .saas-dashboard .manage-link svg {
+    transition: transform 0.2s ease;
+  }
+
+  .saas-dashboard .manage-link:hover {
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
+    border-color: transparent;
+    color: #ffffff;
+    box-shadow: 0 8px 22px rgba(99, 102, 241, 0.3);
+  }
+
+  .saas-dashboard .manage-link:hover svg {
+    transform: translateX(3px);
+  }
+
+  .saas-dashboard .manage-link:focus-visible {
+    outline: 2px solid #818cf8;
+    outline-offset: 2px;
+  }
+
+  .saas-dashboard .mobile-menu {
+    display: none;
+  }
+
+  @media (max-width: 1100px) {
+    .saas-dashboard .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .saas-dashboard .main-grid,
+    .saas-dashboard .lower-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .saas-dashboard .search {
+      display: none;
+    }
+  }
+
+  @media (max-width: 800px) {
+    .saas-dashboard .mobile-menu {
+      display: flex;
+    }
+
+    .saas-dashboard .topbar {
+      padding: 0 16px;
+    }
+
+    .saas-dashboard .content {
+      padding: 22px 16px;
+    }
+
+    .saas-dashboard .hero {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .saas-dashboard .profile-name {
+      display: none;
+    }
+  }
+
+  @media (max-width: 520px) {
+    .saas-dashboard .stats-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .saas-dashboard .topbar-left .breadcrumb,
+    .saas-dashboard .topbar-left .page-title {
+      display: none;
+    }
+
+    /* Let the workspace switcher shrink so the bell and the profile
+       button stay on screen. */
+    .saas-dashboard .topbar {
+      gap: 10px;
+    }
+
+    .saas-dashboard .topbar-left {
+      flex: 1;
+      min-width: 0;
+      gap: 10px;
+    }
+
+    .saas-dashboard .top-actions {
+      flex-shrink: 0;
+    }
+
+    .saas-dashboard .subscription-info {
+      grid-template-columns: 1fr;
+    }
+
+    .saas-dashboard .hero h1 {
+      font-size: 26px;
+    }
+
+    .saas-dashboard .profile-button {
+      padding-right: 4px;
+    }
+  }
+

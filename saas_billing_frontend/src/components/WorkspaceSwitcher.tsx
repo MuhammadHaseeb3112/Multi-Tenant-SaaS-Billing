@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+
+import { createOrganization } from "../api/tenants";
+import { useAuth } from "../context/AuthContext";
 import { useOrganization } from "../context/OrganizationContext";
 
 function IconBuilding({ size = 20 }: { size?: number }) {
@@ -86,11 +89,59 @@ export default function WorkspaceSwitcher() {
     organizations,
     activeOrganization,
     setActiveOrganization,
+    selectNewOrganization,
   } = useOrganization();
 
   const [open, setOpen] = useState(false);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  const { refreshUser } = useAuth();
+
+  // "Add workspace" form.
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  const closeForm = () => {
+    setCreating(false);
+    setNewName("");
+    setCreateError("");
+  };
+
+  const handleCreate = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const name = newName.trim();
+
+    if (!name) {
+      setCreateError("Please enter a workspace name.");
+      return;
+    }
+
+    setSaving(true);
+    setCreateError("");
+
+    createOrganization({ name })
+      .then(async (organization) => {
+        // Select first, then reload: the new workspace becomes active
+        // as soon as it is in the user's organization list.
+        selectNewOrganization(organization.id);
+        await refreshUser();
+        closeForm();
+        setOpen(false);
+      })
+      .catch((err) => {
+        const data = err?.response?.data;
+        const message =
+          data?.detail ||
+          (Array.isArray(data?.name) ? data.name[0] : undefined) ||
+          "Could not create the workspace. Please try again.";
+        setCreateError(message);
+      })
+      .finally(() => setSaving(false));
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -99,6 +150,7 @@ export default function WorkspaceSwitcher() {
         !wrapperRef.current.contains(event.target as Node)
       ) {
         setOpen(false);
+        closeForm();
       }
     };
 
@@ -357,6 +409,83 @@ export default function WorkspaceSwitcher() {
           color: #a5b4fc;
         }
 
+        .workspace-create {
+          padding: 6px 4px 4px;
+          display: grid;
+          gap: 8px;
+        }
+
+        .workspace-create-label {
+          color: #94a3b8;
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+
+        .workspace-create-input {
+          width: 100%;
+          box-sizing: border-box;
+          height: 36px;
+          padding: 0 10px;
+          border-radius: 9px;
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          background: #0d0f16;
+          color: #f8fafc;
+          font-size: 12px;
+          outline: none;
+        }
+
+        .workspace-create-input:focus {
+          border-color: #6366f1;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+        }
+
+        .workspace-create-error {
+          color: #fca5a5;
+          font-size: 11px;
+        }
+
+        .workspace-create-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 8px;
+        }
+
+        .workspace-create-cancel,
+        .workspace-create-submit {
+          height: 30px;
+          padding: 0 12px;
+          border-radius: 8px;
+          font-size: 11px;
+          font-weight: 650;
+          cursor: pointer;
+        }
+
+        .workspace-create-cancel {
+          border: 1px solid rgba(148, 163, 184, 0.2);
+          background: transparent;
+          color: #cbd5e1;
+        }
+
+        .workspace-create-submit {
+          border: 0;
+          background: linear-gradient(135deg, #6366f1, #7c3aed);
+          color: #ffffff;
+        }
+
+        .workspace-create-submit:disabled,
+        .workspace-create-cancel:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .workspace-create-hint {
+          margin: 0;
+          color: #64748b;
+          font-size: 10px;
+        }
+
         .workspace-empty {
           padding: 14px 11px;
           color: #64748b;
@@ -395,7 +524,15 @@ export default function WorkspaceSwitcher() {
 
         @media (max-width: 600px) {
           .topbar .workspace-switcher {
-            width: 210px;
+            width: auto;
+            max-width: 210px;
+            flex: 1 1 0;
+            min-width: 0;
+          }
+
+          .topbar .workspace-dropdown {
+            width: 260px;
+            max-width: calc(100vw - 32px);
           }
 
           .workspace-trigger {
@@ -504,17 +641,65 @@ export default function WorkspaceSwitcher() {
 
           <div className="workspace-divider" />
 
-          <button
-            type="button"
-            className="workspace-add"
-            onClick={() => {
-              setOpen(false);
-              // Organization creation can be connected later.
-            }}
-          >
-            <IconPlus size={16} />
-            Add workspace
-          </button>
+          {creating ? (
+            <form className="workspace-create" onSubmit={handleCreate}>
+              <label
+                className="workspace-create-label"
+                htmlFor="new-workspace-name"
+              >
+                New workspace name
+              </label>
+
+              <input
+                id="new-workspace-name"
+                className="workspace-create-input"
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="e.g. Hassan Labs"
+                maxLength={255}
+                autoFocus
+                disabled={saving}
+              />
+
+              {createError && (
+                <div className="workspace-create-error" role="alert">
+                  {createError}
+                </div>
+              )}
+
+              <div className="workspace-create-actions">
+                <button
+                  type="button"
+                  className="workspace-create-cancel"
+                  onClick={closeForm}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="workspace-create-submit"
+                  disabled={saving}
+                >
+                  {saving ? "Creating..." : "Create"}
+                </button>
+              </div>
+
+              <p className="workspace-create-hint">
+                You will be the owner. It starts on the Free plan.
+              </p>
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="workspace-add"
+              onClick={() => setCreating(true)}
+            >
+              <IconPlus size={16} />
+              Add workspace
+            </button>
+          )}
         </div>
       )}
     </div>

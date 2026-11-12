@@ -159,15 +159,19 @@ function AnalyticsPage() {
             ? "CANCELED"
             : "NO SUBSCRIPTION";
 
-  // All-time total from the API; the 12-month trend sum is only a
-  // fallback for older backends.
-  const totalPaid =
-    analytics.total_paid !== undefined
-      ? Number(analytics.total_paid)
-      : analytics.revenue_trend.reduce(
-          (sum, item) => sum + Number(item.revenue),
-          0,
-        );
+  // Customer money and platform fees, kept apart. The trend sum is
+  // only a fallback for older backends.
+  const collectedFromCustomers = Number(
+    analytics.collected_from_customers ??
+      analytics.total_paid ??
+      analytics.revenue_trend.reduce(
+        (sum, item) => sum + Number(item.revenue),
+        0,
+      ),
+  );
+
+  const paidToPlatform = Number(analytics.paid_to_platform ?? 0);
+  const openInvoices = analytics.open_invoices;
 
   const latestMonth =
     analytics.revenue_trend.length > 0
@@ -260,16 +264,54 @@ function AnalyticsPage() {
           </div>
 
           <div className="analytics-kpi-content">
-            <span>Total Paid</span>
+            <span>Collected from Customers</span>
             <strong>
-              {currency} {totalPaid.toFixed(2)}
+              {currency} {collectedFromCustomers.toFixed(2)}
             </strong>
 
             <small>
-              All payments received (Stripe + manual)
+              Invoice payments received (Stripe + manual)
             </small>
           </div>
         </div>
+
+        <div className="analytics-kpi-card">
+          <div className="analytics-kpi-icon">
+            <CreditCard size={20} />
+          </div>
+
+          <div className="analytics-kpi-content">
+            <span>Paid to Platform</span>
+            <strong>
+              {currency} {paidToPlatform.toFixed(2)}
+            </strong>
+
+            <small>
+              Subscription fees for this workspace
+            </small>
+          </div>
+        </div>
+
+        {openInvoices && (
+          <div className="analytics-kpi-card">
+            <div className="analytics-kpi-icon">
+              <TrendingUp size={20} />
+            </div>
+
+            <div className="analytics-kpi-content">
+              <span>Awaiting Payment</span>
+              <strong>
+                {currency} {Number(openInvoices.amount).toFixed(2)}
+              </strong>
+
+              <small>
+                {openInvoices.count === 1
+                  ? "1 open customer invoice"
+                  : `${openInvoices.count} open customer invoices`}
+              </small>
+            </div>
+          </div>
+        )}
 
         <div className="analytics-kpi-card">
           <div className="analytics-kpi-icon">
@@ -279,11 +321,13 @@ function AnalyticsPage() {
           <div className="analytics-kpi-content">
             <span>Latest Payment Month</span>
             <strong>
-              {currency} {latestRevenue.toFixed(2)}
+              {latestMonth ?? "—"}
             </strong>
 
             <small>
-              {latestMonth ?? "No payments yet"}
+              {latestMonth
+                ? `${currency} ${latestRevenue.toFixed(2)} collected from customers`
+                : "No customer payments yet"}
             </small>
           </div>
         </div>
@@ -295,7 +339,7 @@ function AnalyticsPage() {
           <div className="analytics-panel-header">
             <div>
               <h2>Revenue Trend</h2>
-              <p>Payments received per month</p>
+              <p>Collected from customers per month</p>
             </div>
 
             <div className="analytics-revenue-value">

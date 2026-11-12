@@ -24,6 +24,8 @@ from apps.notifications.services import (
     create_notification_for_organization_members,
 )
 
+from apps.audit.services import create_audit_log
+
 from .models import WebhookEvent
 
 
@@ -129,8 +131,23 @@ class StripeWebhookView(APIView):
         # ---------------------------------------------------------
         # 6. Process webhook
         # ---------------------------------------------------------
+        # Stripe can deliver the same event twice at the same moment.
+        # The row lock serialises them: the second delivery waits, then
+        # sees processed=True and does nothing.
         try:
             with transaction.atomic():
+                webhook_event = (
+                    WebhookEvent.objects
+                    .select_for_update()
+                    .get(pk=webhook_event.pk)
+                )
+
+                if webhook_event.processed:
+                    return Response(
+                        {"detail": "Webhook already processed."},
+                        status=status.HTTP_200_OK,
+                    )
+
                 self.handle_event(event)
 
                 webhook_event.processed = True
@@ -182,6 +199,13 @@ class StripeWebhookView(APIView):
             "invoice.paid": self.handle_invoice_paid,
             # Draft renewal invoice: add last period's usage overage.
             "invoice.created": self.handle_invoice_created,
+            # Refunds (refund.* is primary; charge.refunded as fallback).
+            "refund.created": self.handle_refund,
+            "refund.updated": self.handle_refund,
+            "charge.refunded": self.handle_charge_refunded,
+            "credit_note.created": self.handle_credit_note,
+            "credit_note.updated": self.handle_credit_note,
+            "credit_note.voided": self.handle_credit_note,
             "invoice.payment_failed": self.handle_invoice_payment_failed,
             "customer.subscription.updated": self.handle_subscription_updated,
             "customer.subscription.deleted": self.handle_subscription_deleted,
@@ -420,7 +444,24 @@ class StripeWebhookView(APIView):
             ]
         )
 
-        record_invoice_checkout_payment(session, invoice)
+        payment = record_invoice_checkout_payment(session, invoice)
+
+        create_audit_log(
+            organization=invoice.organization,
+            user=None,
+            action="INVOICE_PAID",
+            resource_type="Invoice",
+            resource_id=invoice.id,
+            description=(
+                f"Invoice {invoice.invoice_number} paid by "
+                f"{invoice.billing_email} via Stripe "
+                f"({payment.currency} {payment.amount:.2f})."
+            ),
+            metadata={
+                "stripe_checkout_session_id": session.get("id"),
+                "payment_id": str(payment.id),
+            },
+        )
 
 
     # =============================================================
@@ -549,6 +590,45 @@ class StripeWebhookView(APIView):
 
         bill_overage_for_invoice(subscription, invoice)
 
+    # =============================================================
+    # REFUNDS & CREDIT NOTES
+    # =============================================================
+
+    def handle_refund(self, event):
+        from apps.invoices.refunds import sync_stripe_refund
+
+        sync_stripe_refund(event["data"]["object"])
+
+    def handle_charge_refunded(self, event):
+        from apps.invoices.refunds import sync_refunds_for_charge
+
+        sync_refunds_for_charge(event["data"]["object"])
+
+    def handle_credit_note(self, event):
+        """
+        Mirror a Stripe credit note. The organization comes from the
+        Stripe customer (one customer per organization).
+        """
+
+        from apps.invoices.refunds import sync_stripe_credit_note
+
+        credit_note = event["data"]["object"]
+        customer_id = self.extract_stripe_id(credit_note.get("customer"))
+
+        subscription = (
+            Subscription.objects
+            .select_related("organization")
+            .filter(stripe_customer_id=customer_id)
+            .first()
+            if customer_id
+            else None
+        )
+
+        if subscription is None:
+            return
+
+        sync_stripe_credit_note(credit_note, subscription.organization)
+
     def get_invoice_organization(self, invoice):
         """
         Find the organization a Stripe invoice belongs to: first via
@@ -588,6 +668,30 @@ class StripeWebhookView(APIView):
     # INVOICE PAYMENT FAILED
     # =============================================================
 
+    def is_rejected_upgrade_charge(self, invoice, stripe_subscription_id):
+        """
+        True when the failed invoice is the up-front charge of a plan
+        upgrade (payment_behavior=pending_if_incomplete). Such a failure
+        leaves the subscription active on its old plan, so it must not
+        start dunning; only a failed renewal makes a subscription past due.
+        """
+
+        if invoice.get("billing_reason") != "subscription_update":
+            return False
+
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+
+        try:
+            stripe_subscription = stripe.Subscription.retrieve(
+                stripe_subscription_id
+            ).to_dict()
+
+        except stripe.error.StripeError:
+            # Can't tell: fall back to normal dunning.
+            return False
+
+        return stripe_subscription.get("status") in ("active", "trialing")
+
     def handle_invoice_payment_failed(self, event):
         """
         Handle failed recurring invoice payment.
@@ -610,6 +714,9 @@ class StripeWebhookView(APIView):
         ).first()
 
         if not subscription:
+            return
+
+        if self.is_rejected_upgrade_charge(invoice, stripe_subscription_id):
             return
 
         # Stripe invoice attempt count.
@@ -773,6 +880,14 @@ class StripeWebhookView(APIView):
         # Synchronize local subscription
         # ---------------------------------------------------------
 
+        # Only a real plan/interval change is worth a notification.
+        # Stripe also sends this event for card changes, renewals,
+        # cancel scheduling and failed upgrade attempts.
+        plan_changed = (
+            subscription.plan_id != plan.id
+            or subscription.interval != interval
+        )
+
         subscription.plan = plan
 
         subscription.interval = interval
@@ -816,6 +931,9 @@ class StripeWebhookView(APIView):
                 "updated_at",
             ]
         )
+
+        if not plan_changed:
+            return
 
         create_notification_for_organization_members(
             organization=subscription.organization,

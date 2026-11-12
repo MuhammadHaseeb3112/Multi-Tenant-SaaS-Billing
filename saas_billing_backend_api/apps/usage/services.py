@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from apps.billing.models import Plan, Subscription
 
-from .models import UsageRecord
+from .models import UsageRecord, active_override_for
 
 
 # Subscriptions in these states do not get their paid plan's limit.
@@ -49,10 +49,10 @@ def calculate_overage_amount(overage_requests, price_per_1000):
     ).quantize(Decimal("0.01"), rounding=ROUND_UP)
 
 
-def overage_allowed(subscription, plan):
+def overage_allowed(subscription, price_per_1000):
     return bool(
-        plan.overage_price_per_1000
-        and plan.overage_price_per_1000 > 0
+        price_per_1000
+        and price_per_1000 > 0
         and subscription.status in OVERAGE_STATUSES
         and subscription.stripe_subscription_id
         and subscription.stripe_customer_id
@@ -80,6 +80,9 @@ class UsageSummary:
     overage_enabled: bool = False
     overage_price_per_1000: Decimal = Decimal("0.00")
     max_overage_requests: object = None
+    # "plan" = the plan's numbers, "custom" = an organization deal.
+    limit_source: str = "plan"
+    plan_limit: object = None
 
     @property
     def remaining(self):
@@ -129,6 +132,8 @@ class UsageSummary:
             "estimated_overage_amount": str(
                 self.estimated_overage_amount
             ),
+            "limit_source": self.limit_source,
+            "plan_limit": self.plan_limit,
         }
 
 
@@ -190,6 +195,60 @@ def get_effective_plan(subscription):
     return subscription.plan
 
 
+@dataclass
+class UsageTerms:
+    """The numbers that apply to one organization at one moment."""
+
+    limit: int
+    overage_price_per_1000: Decimal
+    max_overage_requests: object
+    source: str
+    plan_code: str
+    plan_limit: int
+
+
+def get_usage_terms(subscription, at=None):
+    """
+    Plan terms, replaced field-by-field by the organization's active
+    ``UsageLimitOverride`` (if any). Canceled/unpaid orgs fall back to
+    the FREE plan and do not keep custom deals.
+    """
+
+    plan = get_effective_plan(subscription)
+
+    terms = UsageTerms(
+        limit=plan.api_request_limit,
+        overage_price_per_1000=plan.overage_price_per_1000 or Decimal("0.00"),
+        max_overage_requests=plan.max_overage_requests,
+        source="plan",
+        plan_code=plan.code,
+        plan_limit=plan.api_request_limit,
+    )
+
+    if subscription.status in INACTIVE_STATUSES:
+        return terms
+
+    override = active_override_for(subscription.organization_id, at)
+
+    if override is None:
+        return terms
+
+    terms.source = "custom"
+
+    if override.api_request_limit is not None:
+        terms.limit = override.api_request_limit
+
+    if override.overage_price_per_1000 is not None:
+        terms.overage_price_per_1000 = override.overage_price_per_1000
+
+    if override.no_overage_cap:
+        terms.max_overage_requests = None
+    elif override.max_overage_requests is not None:
+        terms.max_overage_requests = override.max_overage_requests
+
+    return terms
+
+
 def get_current_usage(subscription, now=None):
     """
     API usage of the subscription's organization in the current period.
@@ -216,23 +275,25 @@ def get_current_usage(subscription, now=None):
 
 def get_usage_summary(subscription, now=None):
     start, end = get_usage_period(subscription, now)
-    plan = get_effective_plan(subscription)
+    terms = get_usage_terms(subscription, now)
 
-    enabled = overage_allowed(subscription, plan)
+    enabled = overage_allowed(subscription, terms.overage_price_per_1000)
 
     return UsageSummary(
         used=get_current_usage(subscription, now),
-        limit=plan.api_request_limit,
+        limit=terms.limit,
         period_start=start,
         period_end=end,
-        plan_code=plan.code,
+        plan_code=terms.plan_code,
         overage_enabled=enabled,
         overage_price_per_1000=(
-            plan.overage_price_per_1000 if enabled else Decimal("0.00")
+            terms.overage_price_per_1000 if enabled else Decimal("0.00")
         ),
         max_overage_requests=(
-            plan.max_overage_requests if enabled else None
+            terms.max_overage_requests if enabled else None
         ),
+        limit_source=terms.source,
+        plan_limit=terms.plan_limit,
     )
 
 

@@ -1,0 +1,117 @@
+# Production / live-demo stack on ONE server (VPS, any Docker host).
+#
+#   cp deploy/.env.prod.example deploy/.env.prod   # fill it in
+#   docker compose -f deploy/compose.prod.yml --env-file deploy/.env.prod up -d --build
+#
+# Browser -> Caddy (HTTPS, automatic Let's Encrypt) -> nginx (React app,
+# /api proxy) -> gunicorn/Django. One origin: the httpOnly refresh cookie
+# is first-party and no CORS is needed.
+
+name: saas-billing
+
+x-backend: &backend
+  build:
+    context: ../saas_billing_backend_api
+  restart: unless-stopped
+  env_file: .env.prod
+  environment:
+    DJANGO_SETTINGS_MODULE: config.settings.production
+    DB_HOST: postgres
+    DB_PORT: "5432"
+    REDIS_URL: redis://redis:6379/0
+    # Cache (throttles, login lockout) on a different Redis DB than Celery.
+    REDIS_CACHE_URL: redis://redis:6379/1
+    LOG_FORMAT: json
+    # Caddy -> nginx -> Django: 2 proxies append to X-Forwarded-For.
+    NUM_PROXIES: "2"
+    USE_X_FORWARDED_PROTO: "True"
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    <<: *backend
+    # migrate + collectstatic (+ seed_demo when SEED_DEMO=true) + gunicorn
+    command: ["./scripts/start-web.sh"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/ready/', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  celery:
+    <<: *backend
+    command: ["celery", "-A", "config.celery", "worker", "--loglevel=info", "--concurrency=2"]
+
+  celery-beat:
+    <<: *backend
+    # Exactly one beat instance, otherwise scheduled jobs run twice.
+    command: ["celery", "-A", "config.celery", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
+
+  frontend:
+    build:
+      context: ../saas_billing_frontend
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_DEMO_MODE: ${DEMO_MODE:-false}
+        VITE_DEMO_PASSWORD: ${DEMO_PASSWORD:-DemoPass123!}
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+
+volumes:
+  postgres_data:
+  redis_data:
+  caddy_data:
+  caddy_config:

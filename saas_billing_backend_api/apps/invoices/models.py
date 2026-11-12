@@ -15,6 +15,8 @@ class Invoice(models.Model):
 
     class Currency(models.TextChoices):
         USD = "USD", "US Dollar"
+        EUR = "EUR", "Euro"
+        GBP = "GBP", "British Pound"
         PKR = "PKR", "Pakistani Rupee"
 
     id = models.UUIDField(
@@ -71,6 +73,17 @@ class Invoice(models.Model):
     )
 
     billing_email = models.EmailField()
+
+    # Emailing the invoice. Every send bumps payment_link_version, so
+    # only the payment link in the newest email still works.
+    sent_count = models.PositiveIntegerField(default=0)
+
+    last_sent_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    payment_link_version = models.PositiveIntegerField(default=0)
 
     stripe_invoice_id = models.CharField(
         max_length=255,
@@ -265,7 +278,15 @@ class Payment(models.Model):
 
     class Status(models.TextChoices):
         SUCCEEDED = "SUCCEEDED", "Succeeded"
+        PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED", "Partially refunded"
         REFUNDED = "REFUNDED", "Refunded"
+
+    # Statuses where (part of) the money is still kept. Revenue is
+    # always computed as amount - amount_refunded over these.
+    COLLECTED_STATUSES = (
+        Status.SUCCEEDED,
+        Status.PARTIALLY_REFUNDED,
+    )
 
     id = models.UUIDField(
         primary_key=True,
@@ -326,6 +347,15 @@ class Payment(models.Model):
         max_length=255,
         null=True,
         blank=True,
+        db_index=True,
+    )
+
+    # Sum of SUCCEEDED refunds (Refund rows), kept in sync by
+    # apps.invoices.refunds.recalculate_refunds().
+    amount_refunded = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0,
     )
 
     recorded_by = models.ForeignKey(
@@ -360,3 +390,179 @@ class Payment(models.Model):
             f"{self.organization.name} - {self.amount} "
             f"{self.currency} ({self.method})"
         )
+
+
+class Refund(models.Model):
+    """
+    Money returned to a customer through Stripe (one row per Stripe
+    refund, idempotent on stripe_refund_id). Only SUCCEEDED refunds
+    reduce the payment's collected amount.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        SUCCEEDED = "SUCCEEDED", "Succeeded"
+        FAILED = "FAILED", "Failed"
+        CANCELED = "CANCELED", "Canceled"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    # Null when the refund belongs to a payment this platform does not
+    # know (e.g. a charge created outside the app). Kept for audit.
+    organization = models.ForeignKey(
+        "tenants.Organization",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="refunds",
+    )
+
+    payment = models.ForeignKey(
+        Payment,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="refunds",
+    )
+
+    stripe_refund_id = models.CharField(
+        max_length=255,
+        unique=True,
+    )
+
+    stripe_payment_intent_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    stripe_charge_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    currency = models.CharField(
+        max_length=3,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+    )
+
+    reason = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    refunded_at = models.DateTimeField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-refunded_at"]
+
+    def __str__(self):
+        return f"Refund {self.amount} {self.currency} ({self.status})"
+
+
+class CreditNote(models.Model):
+    """
+    Mirror of a Stripe credit note (a correction to a finalized invoice:
+    refund, customer balance credit or out-of-band). The money movement
+    itself is tracked by Refund rows; this keeps the document trail.
+    """
+
+    class Status(models.TextChoices):
+        ISSUED = "ISSUED", "Issued"
+        VOID = "VOID", "Void"
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    organization = models.ForeignKey(
+        "tenants.Organization",
+        on_delete=models.CASCADE,
+        related_name="credit_notes",
+    )
+
+    invoice = models.ForeignKey(
+        Invoice,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="credit_notes",
+    )
+
+    stripe_credit_note_id = models.CharField(
+        max_length=255,
+        unique=True,
+    )
+
+    stripe_invoice_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    number = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    currency = models.CharField(
+        max_length=3,
+    )
+
+    reason = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+    )
+
+    issued_at = models.DateTimeField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-issued_at"]
+
+    def __str__(self):
+        return f"Credit note {self.number or self.stripe_credit_note_id}"

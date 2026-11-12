@@ -815,6 +815,57 @@ class PaymentBasedRevenueTests(AnalyticsTestBase):
 
         self.assertEqual(response.data["total_paid"], "25.00")
 
+    def test_customer_and_platform_money_are_kept_apart(self):
+        from apps.invoices.models import Invoice
+
+        # Customer money: an invoice checkout + a manual payment.
+        self.make_payment(self.organization, "170.00", timezone.now())
+        self.make_payment(
+            self.organization,
+            "2260.00",
+            timezone.now(),
+            method=Payment.Method.MANUAL,
+        )
+
+        # Platform money: the mirrored Stripe subscription invoice.
+        platform = self.make_payment(
+            self.organization, "29.00", timezone.now(),
+        )
+        platform.stripe_invoice_id = "in_test_platform_1"
+        platform.save(update_fields=["stripe_invoice_id"])
+
+        # One customer invoice still waiting to be paid.
+        Invoice.objects.create(
+            organization=self.organization,
+            invoice_number="INV-OPEN-1",
+            status=Invoice.Status.OPEN,
+            issue_date=timezone.now().date(),
+            subtotal=Decimal("79.98"),
+            total=Decimal("79.98"),
+            billing_email="client@example.com",
+        )
+
+        self.authenticate(self.owner)
+
+        response = self.client.get(self.url("analytics-overview"))
+
+        self.assertEqual(
+            response.data["collected_from_customers"], "2430.00",
+        )
+        self.assertEqual(response.data["paid_to_platform"], "29.00")
+        self.assertEqual(response.data["total_paid"], "2459.00")
+        self.assertEqual(response.data["open_invoices"]["count"], 1)
+        self.assertEqual(
+            response.data["open_invoices"]["amount"], "79.98",
+        )
+
+        # The trend shows the business's own earnings only.
+        month = timezone.now().strftime("%Y-%m")
+        self.assertEqual(
+            response.data["revenue_trend"],
+            [{"month": month, "revenue": "2430.00"}],
+        )
+
     def test_annual_mrr_is_rounded_to_cents(self):
         self.subscription.interval = Subscription.Interval.ANNUAL
         self.subscription.plan = self.enterprise_plan  # 3000 / 12 = 250

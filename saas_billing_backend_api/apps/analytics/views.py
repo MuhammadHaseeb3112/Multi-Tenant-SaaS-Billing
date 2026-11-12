@@ -5,7 +5,7 @@ from datetime import timedelta
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from django.db.models import Sum
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum
 from django.db.models.functions import TruncMonth
 from rest_framework import status
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
@@ -13,7 +13,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.billing.models import Subscription
-from apps.invoices.models import Payment
+from apps.invoices.models import Invoice, Payment
+
+# Money kept after refunds. Revenue figures always use this, over
+# Payment.COLLECTED_STATUSES (SUCCEEDED + PARTIALLY_REFUNDED).
+NET_AMOUNT = ExpressionWrapper(
+    F("amount") - F("amount_refunded"),
+    output_field=DecimalField(max_digits=12, decimal_places=2),
+)
 from apps.tenants.models import Organization
 
 
@@ -50,10 +57,10 @@ def payment_trend(payments):
 
     rows = (
         payments
-        .filter(status=Payment.Status.SUCCEEDED)
+        .filter(status__in=Payment.COLLECTED_STATUSES)
         .annotate(month=TruncMonth("paid_at"))
         .values("month")
-        .annotate(revenue=Sum("amount"))
+        .annotate(revenue=Sum(NET_AMOUNT))
         .order_by("month")
     )
 
@@ -344,20 +351,52 @@ class AnalyticsOverviewView(APIView):
             mrr = monthly_value(current_subscription)
 
         # -------------------------------------------------
-        # Revenue trend
+        # Money, kept strictly apart:
+        # - customer payments: money THIS organization collected
+        #   from its customers (invoice checkouts, manual payments)
+        # - platform payments: money it paid the platform for its
+        #   subscription (mirrored Stripe invoices)
+        # A platform payment is the only kind that carries a
+        # stripe_invoice_id.
         # -------------------------------------------------
 
         organization_payments = Payment.objects.filter(
             organization_id=organization_id,
         )
 
-        revenue_trend = payment_trend(organization_payments)
+        def collected_total(payments):
+            return (
+                payments
+                .filter(status__in=Payment.COLLECTED_STATUSES)
+                .aggregate(total=Sum(NET_AMOUNT))["total"]
+                or Decimal("0.00")
+            )
 
-        total_paid = (
-            organization_payments
-            .filter(status=Payment.Status.SUCCEEDED)
-            .aggregate(total=Sum("amount"))["total"]
-            or Decimal("0.00")
+        customer_payments = organization_payments.filter(
+            stripe_invoice_id__isnull=True,
+        )
+
+        platform_payments = organization_payments.filter(
+            stripe_invoice_id__isnull=False,
+        )
+
+        # The trend shows the business's own earnings, so platform
+        # fees stay out of it.
+        revenue_trend = payment_trend(customer_payments)
+
+        collected_from_customers = collected_total(customer_payments)
+        paid_to_platform = collected_total(platform_payments)
+        total_paid = collected_from_customers + paid_to_platform
+
+        # Customer invoices still waiting to be paid.
+        open_invoices = (
+            Invoice.objects
+            .filter(
+                organization_id=organization_id,
+                status=Invoice.Status.OPEN,
+                stripe_invoice_id__isnull=True,
+            )
+            .aggregate(count=Count("id"), amount=Sum("total"))
         )
 
         # -------------------------------------------------
@@ -393,7 +432,25 @@ class AnalyticsOverviewView(APIView):
 
                 "revenue_trend": revenue_trend,
 
-                # Sum of all money received (Payment rows).
+                # Money the organization collected from its own
+                # customers (invoice checkouts + manual payments).
+                "collected_from_customers": (
+                    f"{collected_from_customers:.2f}"
+                ),
+
+                # Subscription fees the organization paid the
+                # platform (mirrored Stripe invoices).
+                "paid_to_platform": f"{paid_to_platform:.2f}",
+
+                # Customer invoices still waiting for payment.
+                "open_invoices": {
+                    "count": open_invoices["count"] or 0,
+                    "amount": (
+                        f"{open_invoices['amount'] or Decimal('0.00'):.2f}"
+                    ),
+                },
+
+                # Kept for compatibility: everything combined.
                 "total_paid": f"{total_paid:.2f}",
             },
             status=status.HTTP_200_OK,
@@ -494,11 +551,11 @@ class PlatformOverviewView(APIView):
 
         usd_payments = Payment.objects.filter(
             currency="USD",
-            status=Payment.Status.SUCCEEDED,
+            status__in=Payment.COLLECTED_STATUSES,
         )
 
         total_revenue = (
-            usd_payments.aggregate(total=Sum("amount"))["total"]
+            usd_payments.aggregate(total=Sum(NET_AMOUNT))["total"]
             or Decimal("0.00")
         )
 
@@ -506,13 +563,13 @@ class PlatformOverviewView(APIView):
             row["method"]: f"{row['total']:.2f}"
             for row in usd_payments
             .values("method")
-            .annotate(total=Sum("amount"))
+            .annotate(total=Sum(NET_AMOUNT))
         }
 
         other_currency_payments = (
             Payment.objects
             .exclude(currency="USD")
-            .filter(status=Payment.Status.SUCCEEDED)
+            .filter(status__in=Payment.COLLECTED_STATUSES)
             .count()
         )
 

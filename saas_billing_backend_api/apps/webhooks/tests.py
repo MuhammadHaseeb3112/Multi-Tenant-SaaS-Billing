@@ -187,6 +187,46 @@ class StripeSubscriptionUpdateTests(TestCase):
         )
         mock_notification.assert_called_once()
 
+    @patch(
+        "apps.webhooks.views.create_notification_for_organization_members"
+    )
+    @patch("apps.webhooks.views.stripe.Subscription.retrieve")
+    def test_update_without_plan_change_does_not_notify(
+        self,
+        mock_retrieve,
+        mock_notification,
+    ):
+        # Same plan and interval as the local subscription (e.g. the
+        # card was changed or an upgrade payment failed).
+        mock_retrieve.return_value.to_dict.return_value = {
+            "id": "sub_webhook_update_test",
+            "status": "active",
+            "cancel_at_period_end": True,
+            "canceled_at": None,
+            "items": {
+                "data": [
+                    {
+                        "price": {"id": "price_enterprise_monthly_test"},
+                        "current_period_start": 1798932600,
+                        "current_period_end": 1830468600,
+                    }
+                ]
+            },
+        }
+
+        StripeWebhookView().handle_subscription_updated({
+            "type": "customer.subscription.updated",
+            "data": {"object": {"id": "sub_webhook_update_test"}},
+        })
+
+        self.subscription.refresh_from_db()
+
+        # Still synchronized...
+        self.assertTrue(self.subscription.cancel_at_period_end)
+        self.assertEqual(self.subscription.plan, self.enterprise_plan)
+        # ...but nobody is told the plan "was updated".
+        mock_notification.assert_not_called()
+
 
 class StripeWebhookEndpointTests(TestCase):
     def setUp(self):
@@ -911,3 +951,102 @@ class InvoiceCheckoutPaymentTests(TestCase):
         self.assertEqual(payment.amount, Decimal("120.00"))
         self.assertEqual(payment.stripe_payment_intent_id, "pi_test_123")
         self.assertEqual(payment.invoice, self.invoice)
+
+    def test_invoice_checkout_is_logged_once_in_activity(self):
+        from apps.audit.models import AuditLog
+
+        self.view.handle_event(self.session_event())
+        self.view.handle_event(self.session_event())
+
+        log = AuditLog.objects.get(action="INVOICE_PAID")
+        self.assertEqual(log.organization, self.organization)
+        self.assertIsNone(log.user)
+        self.assertIn("INV-000009", log.description)
+        self.assertIn("client@example.com", log.description)
+        self.assertIn("USD 120.00", log.description)
+
+
+class RejectedUpgradeChargeTests(TestCase):
+    """
+    A declined up-front upgrade charge must not start dunning: the
+    subscription is still active on its old plan.
+    """
+
+    def setUp(self):
+        self.organization = Organization.objects.create(
+            name="Upgrade Org", slug="upgrade-org",
+        )
+        plan = Plan.objects.create(
+            code="PRO",
+            name="Pro",
+            stripe_monthly_price_id="price_pro_monthly_upg",
+            stripe_annual_price_id="price_pro_annual_upg",
+        )
+        self.subscription = Subscription.objects.create(
+            organization=self.organization,
+            plan=plan,
+            status=Subscription.Status.ACTIVE,
+            interval=Subscription.Interval.MONTHLY,
+            stripe_subscription_id="sub_upgrade_test",
+        )
+        self.view = StripeWebhookView()
+
+    def fail_invoice(self, **invoice_fields):
+        self.view.handle_invoice_payment_failed({
+            "type": "invoice.payment_failed",
+            "data": {"object": make_new_api_invoice(
+                "sub_upgrade_test", **invoice_fields
+            )},
+        })
+        self.subscription.refresh_from_db()
+
+    @patch(
+        "apps.webhooks.views.create_notification_for_organization_members"
+    )
+    @patch("apps.webhooks.views.stripe.Subscription.retrieve")
+    def test_declined_upgrade_keeps_subscription_active(
+        self, mock_retrieve, mock_notification,
+    ):
+        mock_retrieve.return_value.to_dict.return_value = {
+            "status": "active",
+        }
+
+        self.fail_invoice(billing_reason="subscription_update")
+
+        self.assertEqual(
+            self.subscription.status, Subscription.Status.ACTIVE,
+        )
+        self.assertIsNone(self.subscription.grace_period_end)
+        mock_notification.assert_not_called()
+
+    @patch(
+        "apps.webhooks.views.create_notification_for_organization_members"
+    )
+    @patch("apps.webhooks.views.stripe.Subscription.retrieve")
+    def test_update_charge_on_past_due_subscription_starts_dunning(
+        self, mock_retrieve, mock_notification,
+    ):
+        mock_retrieve.return_value.to_dict.return_value = {
+            "status": "past_due",
+        }
+
+        self.fail_invoice(billing_reason="subscription_update")
+
+        self.assertEqual(
+            self.subscription.status, Subscription.Status.PAST_DUE,
+        )
+        self.assertIsNotNone(self.subscription.grace_period_end)
+
+    @patch(
+        "apps.webhooks.views.create_notification_for_organization_members"
+    )
+    @patch("apps.webhooks.views.stripe.Subscription.retrieve")
+    def test_failed_renewal_starts_dunning_without_lookup(
+        self, mock_retrieve, mock_notification,
+    ):
+        self.fail_invoice(billing_reason="subscription_cycle")
+
+        self.assertEqual(
+            self.subscription.status, Subscription.Status.PAST_DUE,
+        )
+        mock_retrieve.assert_not_called()

@@ -68,7 +68,9 @@ class AccountsTests(APITestCase):
 
         self.assertIn("tokens", response.data)
         self.assertIn("access", response.data["tokens"])
-        self.assertIn("refresh", response.data["tokens"])
+        # Refresh token is now only in an httpOnly cookie, never in JSON.
+        self.assertNotIn("refresh", response.data["tokens"])
+        self.assertTrue(response.cookies["sb_refresh"]["httponly"])
 
     def test_register_duplicate_email_fails(self):
         response = self.client.post(
@@ -168,10 +170,12 @@ class AccountsTests(APITestCase):
             response.data["tokens"],
         )
 
-        self.assertIn(
+        # Refresh token is now only in an httpOnly cookie, never in JSON.
+        self.assertNotIn(
             "refresh",
             response.data["tokens"],
         )
+        self.assertTrue(response.cookies["sb_refresh"]["httponly"])
 
     def test_login_wrong_password_returns_401(self):
         response = self.client.post(
@@ -295,17 +299,15 @@ class AccountsTests(APITestCase):
         )
 
         access_token = login_response.data["tokens"]["access"]
-        refresh_token = login_response.data["tokens"]["refresh"]
 
         self.client.credentials(
             HTTP_AUTHORIZATION=f"Bearer {access_token}"
         )
 
+        # The test client keeps the refresh cookie from the login response.
         response = self.client.post(
             self.logout_url,
-            {
-                "refresh": refresh_token,
-            },
+            {},
             format="json",
         )
 

@@ -7,178 +7,250 @@
     <style>
         @page {
             size: A4;
-            margin: 2cm;
+            margin: 1.8cm;
         }
 
         body {
             font-family: Arial, sans-serif;
-            color: #222;
-            font-size: 12px;
+            color: #1f2430;
+            font-size: 11px;
+        }
+
+        table {
+            border-collapse: collapse;
         }
 
         .header {
             width: 100%;
-            margin-bottom: 30px;
+            border-bottom: 3px solid #4f46e5;
         }
 
-        .header-left {
-            float: left;
+        .header td {
+            vertical-align: top;
+            padding-bottom: 16px;
         }
 
-        .header-right {
-            float: right;
+        .seller-name {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4f46e5;
+        }
+
+        .muted {
+            color: #6b7280;
+        }
+
+        .right {
             text-align: right;
-        }
-
-        .clearfix {
-            clear: both;
         }
 
         h1 {
             margin: 0;
-            font-size: 28px;
+            font-size: 26px;
+            letter-spacing: 2px;
         }
 
         .invoice-number {
-            font-size: 14px;
-            margin-top: 5px;
+            font-size: 13px;
+            margin-top: 4px;
         }
 
-        .details {
-            margin-top: 30px;
-            margin-bottom: 30px;
-        }
-
-        .details table {
-            width: 100%;
-        }
-
-        .details td {
-            padding: 5px;
-            vertical-align: top;
-        }
-
-        .label {
+        .badge {
+            display: block;
+            float: right;
+            margin-top: 8px;
+            padding: 4px 10px;
+            border-radius: 10px;
+            font-size: 10px;
             font-weight: bold;
+            letter-spacing: 1px;
+            color: #ffffff;
+        }
+
+        .badge-green { background-color: #15803d; }
+        .badge-blue { background-color: #2563eb; }
+        .badge-red { background-color: #b91c1c; }
+        .badge-amber { background-color: #b45309; }
+        .badge-grey { background-color: #6b7280; }
+
+        .parties {
+            width: 100%;
+            margin-top: 22px;
+        }
+
+        .parties td {
+            vertical-align: top;
+            width: 50%;
+        }
+
+        .caption {
+            font-size: 9px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            color: #6b7280;
+            margin-bottom: 4px;
+        }
+
+        .party-name {
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .meta td {
+            padding: 2px 0 2px 14px;
+        }
+
+        .meta .caption-cell {
+            color: #6b7280;
+            text-align: right;
         }
 
         .items {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+            margin-top: 26px;
         }
 
         .items th {
-            background-color: #eeeeee;
-            border: 1px solid #cccccc;
-            padding: 10px;
+            background-color: #eef2ff;
+            border-bottom: 1px solid #c7d2fe;
+            padding: 9px 10px;
             text-align: left;
+            font-size: 10px;
+            letter-spacing: 0.5px;
         }
 
         .items td {
-            border: 1px solid #cccccc;
-            padding: 10px;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 9px 10px;
         }
 
-        .number {
+        .items .number,
+        .totals .number {
             text-align: right;
         }
 
         .totals {
-            width: 40%;
+            width: 46%;
             margin-left: auto;
-            margin-top: 20px;
-            border-collapse: collapse;
+            margin-top: 16px;
         }
 
         .totals td {
-            padding: 8px;
+            padding: 6px 10px;
         }
 
-        .total-row {
-            font-size: 15px;
+        .total-row td {
+            font-size: 14px;
             font-weight: bold;
-            border-top: 2px solid #222;
+            border-top: 2px solid #1f2430;
+        }
+
+        .due-row td {
+            font-weight: bold;
+            background-color: #eef2ff;
+        }
+
+        .void-note {
+            margin-top: 22px;
+            padding: 10px 12px;
+            border: 1px solid #d1d5db;
+            background-color: #f3f4f6;
+            color: #374151;
         }
 
         .footer {
-            margin-top: 50px;
+            margin-top: 44px;
+            padding-top: 10px;
+            border-top: 1px solid #e5e7eb;
             text-align: center;
-            font-size: 10px;
-            color: #777;
+            font-size: 9px;
+            color: #6b7280;
         }
     </style>
 </head>
 
 <body>
 
-    <div class="header">
+    <table class="header">
+        <tr>
+            <td>
+                <div class="seller-name">{{ seller_name }}</div>
+                {% if seller_email %}
+                <div class="muted">{{ seller_email }}</div>
+                {% endif %}
+            </td>
 
-        <div class="header-left">
-            <h1>INVOICE</h1>
-            <div class="invoice-number">
-                {{ invoice.invoice_number }}
-            </div>
-        </div>
-
-        <div class="header-right">
-            <strong>SAAS BILLING</strong><br>
-            {{ invoice.billing_email }}
-        </div>
-
-        <div class="clearfix"></div>
-    </div>
+            <td class="right">
+                <h1>INVOICE</h1>
+                <div class="invoice-number">
+                    {{ invoice.invoice_number }}
+                </div>
+                <span class="badge {{ badge_class }}">{{ badge }}</span>
+            </td>
+        </tr>
+    </table>
 
 
-    <div class="details">
+    <table class="parties">
+        <tr>
+            <td>
+                <div class="caption">BILL TO</div>
+                {% if buyer_name %}
+                <div class="party-name">{{ buyer_name }}</div>
+                <div>{{ buyer_email }}</div>
+                {% else %}
+                <div class="party-name">{{ buyer_email }}</div>
+                {% endif %}
+            </td>
 
-        <table>
-            <tr>
-                <td>
-                    <span class="label">Issue Date:</span>
-                    {{ invoice.issue_date }}
-                </td>
-
-                <td>
-                    <span class="label">Due Date:</span>
-                    {{ invoice.due_date }}
-                </td>
-
-                <td>
-                    <span class="label">Currency:</span>
-                    {{ invoice.currency }}
-                </td>
-
-                <td>
-                    <span class="label">Status:</span>
-                    {{ invoice.status }}
-                </td>
-            </tr>
-        </table>
-
-    </div>
+            <td>
+                <table class="meta" align="right">
+                    <tr>
+                        <td class="caption-cell">Issue date</td>
+                        <td>{{ invoice.issue_date|date:"d M Y" }}</td>
+                    </tr>
+                    {% if invoice.due_date %}
+                    <tr>
+                        <td class="caption-cell">Due date</td>
+                        <td>{{ invoice.due_date|date:"d M Y" }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if paid_at %}
+                    <tr>
+                        <td class="caption-cell">Paid on</td>
+                        <td>{{ paid_at|date:"d M Y" }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td class="caption-cell">Currency</td>
+                        <td>{{ invoice.currency }}</td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
 
 
     <table class="items">
 
         <thead>
             <tr>
-                <th>Description</th>
-                <th class="number">Quantity</th>
-                <th class="number">Unit Price</th>
-                <th class="number">Amount</th>
+                <th>DESCRIPTION</th>
+                <th class="number">QTY</th>
+                <th class="number">UNIT PRICE</th>
+                <th class="number">AMOUNT</th>
             </tr>
         </thead>
 
         <tbody>
 
-            {% for item in invoice.items.all %}
+            {% for item in items %}
 
             <tr>
                 <td>{{ item.description }}</td>
-                <td class="number">{{ item.quantity }}</td>
-                <td class="number">{{ item.unit_price }}</td>
-                <td class="number">{{ item.amount }}</td>
+                <td class="number">{{ item.quantity|floatformat:"-2" }}</td>
+                <td class="number">{{ item.unit_price|floatformat:2 }}</td>
+                <td class="number">{{ item.amount|floatformat:2 }}</td>
             </tr>
 
             {% endfor %}
@@ -191,25 +263,60 @@
     <table class="totals">
 
         <tr>
-            <td>Subtotal:</td>
-            <td class="number">{{ invoice.subtotal }}</td>
+            <td>Subtotal</td>
+            <td class="number">{{ invoice.currency }} {{ invoice.subtotal|floatformat:2 }}</td>
         </tr>
 
         <tr>
-            <td>Tax:</td>
-            <td class="number">{{ invoice.tax }}</td>
+            <td>Tax</td>
+            <td class="number">{{ invoice.currency }} {{ invoice.tax|floatformat:2 }}</td>
         </tr>
 
         <tr class="total-row">
-            <td>Total:</td>
-            <td class="number">{{ invoice.total }}</td>
+            <td>Total</td>
+            <td class="number">{{ invoice.currency }} {{ invoice.total|floatformat:2 }}</td>
         </tr>
+
+        {% if paid %}
+        <tr>
+            <td>Paid</td>
+            <td class="number">{{ invoice.currency }} {{ paid|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+
+        {% if refunded %}
+        <tr>
+            <td>Refunded</td>
+            <td class="number">- {{ invoice.currency }} {{ refunded|floatformat:2 }}</td>
+        </tr>
+
+        <tr>
+            <td>Net paid</td>
+            <td class="number">{{ invoice.currency }} {{ net_paid|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
+
+        {% if not is_void %}
+        <tr class="due-row">
+            <td>Amount due</td>
+            <td class="number">{{ invoice.currency }} {{ amount_due|floatformat:2 }}</td>
+        </tr>
+        {% endif %}
 
     </table>
 
 
+    {% if is_void %}
+    <div class="void-note">
+        This invoice has been voided. No payment is due.
+    </div>
+    {% endif %}
+
+
     <div class="footer">
         Thank you for your business.
+        &nbsp;|&nbsp; {{ seller_name }}
+        &nbsp;|&nbsp; Invoice {{ invoice.invoice_number }}
     </div>
 
 </body>

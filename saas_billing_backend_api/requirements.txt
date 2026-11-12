@@ -6,14 +6,14 @@ celery==5.6.3
 certifi==2026.7.22
 cffi==2.1.1
 charset-normalizer==3.5.1
-click==8.5.0
 click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
+click==8.5.0
 cssselect2==0.10.1
-Django==6.1.1
 django-cors-headers==4.9.0
 django-environ==0.14.0
+Django==6.1.1
 djangorestframework==3.18.0
 djangorestframework_simplejwt==5.5.1
 fonttools==4.65.0
@@ -23,9 +23,9 @@ kombu==5.6.2
 packaging==26.3
 pillow==12.3.0
 prompt_toolkit==3.0.53
-psycopg==3.3.5
 psycopg-binary==3.3.5
 psycopg2-binary==2.9.12
+psycopg==3.3.5
 pycparser==3.0
 pydyf==0.12.1
 PyJWT==2.13.0
@@ -48,4 +48,5 @@ vine==5.1.0
 wcwidth==0.8.3
 weasyprint==70.0
 webencodings==0.6.1
+whitenoise==6.12.0
 zopfli==0.4.3

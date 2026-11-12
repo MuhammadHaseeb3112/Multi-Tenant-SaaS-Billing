@@ -7,10 +7,23 @@ from .views import (
     InvoiceSendView,
     InvoicePaymentView,
     PaymentListView,
+    PublicInvoicePayView,
+    PublicInvoiceView,
 )
 
 
 urlpatterns = [
+    # Customer payment link from the invoice email (no login).
+    path(
+        "public/<str:token>/",
+        PublicInvoiceView.as_view(),
+        name="public-invoice",
+    ),
+    path(
+        "public/<str:token>/pay/",
+        PublicInvoicePayView.as_view(),
+        name="public-invoice-pay",
+    ),
     path(
         "organizations/<uuid:organization_id>/payments/",
         PaymentListView.as_view(),

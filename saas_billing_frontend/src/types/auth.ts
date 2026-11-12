@@ -35,24 +35,15 @@ export interface AuthUserResponse {
   organizations: Organization[];
 }
 
+// The refresh token is never in the body: it is an httpOnly cookie.
 export interface AuthTokens {
   access: string;
-  refresh: string;
 }
 
 export interface AuthResponse {
   message: string;
   user: AuthUserResponse;
   tokens: AuthTokens;
-}
-
-export interface RefreshResponse {
-  access: string;
-  refresh?: string;
-}
-
-export interface LogoutData {
-  refresh: string;
 }
 
 export interface LogoutResponse {

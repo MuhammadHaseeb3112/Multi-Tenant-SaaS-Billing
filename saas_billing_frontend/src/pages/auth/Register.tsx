@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useState,
   type FormEvent,
 } from "react";
@@ -9,12 +10,38 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
+import {
+  acceptInvitation,
+  previewInvitation,
+  type InvitationPreview,
+} from "../../api/tenants";
 import { useAuth } from "../../context/AuthContext";
+import { useOrganization } from "../../context/OrganizationContext";
+
+type InviteState =
+  | { kind: "none" }
+  | { kind: "loading" }
+  | { kind: "invalid" }
+  | { kind: "ready"; preview: InvitationPreview };
+
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: "Admin",
+  ACCOUNTANT: "Accountant",
+  MEMBER: "Member",
+};
 
 function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { register } = useAuth();
+  const {
+    register,
+    user,
+    isAuthenticated,
+    isLoading: authLoading,
+    logout,
+    refreshUser,
+  } = useAuth();
+  const { selectNewOrganization } = useOrganization();
 
   const urlInvitationToken =
     searchParams.get("token") || "";
@@ -34,6 +61,34 @@ function Register() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] =
     useState(false);
+
+  // Invitation link: look up who it is for, so the email is fixed
+  // to the invited address and the workspace is named.
+  const [invite, setInvite] = useState<InviteState>(
+    urlInvitationToken ? { kind: "loading" } : { kind: "none" },
+  );
+
+  useEffect(() => {
+    if (!urlInvitationToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    previewInvitation(urlInvitationToken)
+      .then((preview) => {
+        if (cancelled) return;
+        setInvite({ kind: "ready", preview });
+        setEmail(preview.email);
+      })
+      .catch(() => {
+        if (!cancelled) setInvite({ kind: "invalid" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [urlInvitationToken]);
 
   const getErrorMessage = (error: unknown): string => {
     if (
@@ -135,6 +190,147 @@ function Register() {
   const isInvitationRegistration =
     Boolean(invitationToken.trim());
 
+  const preview =
+    invite.kind === "ready" ? invite.preview : null;
+
+  const signedInAs = isAuthenticated ? user?.email ?? "" : "";
+
+  // New person with a valid pending invitation: show the sign-up form
+  // with the invited email locked. Everything else gets a panel.
+  const showSignupForm =
+    invite.kind === "none" ||
+    (preview !== null &&
+      preview.status === "PENDING" &&
+      !preview.account_exists &&
+      !authLoading &&
+      !isAuthenticated);
+
+  const handleAccept = () => {
+    setError("");
+    setIsSubmitting(true);
+
+    acceptInvitation(urlInvitationToken)
+      .then(async (result) => {
+        selectNewOrganization(result.organization.id);
+        await refreshUser();
+        navigate("/dashboard", { replace: true });
+      })
+      .catch((err) => setError(getErrorMessage(err)))
+      .finally(() => setIsSubmitting(false));
+  };
+
+  const renderInvitePanel = () => {
+    if (invite.kind === "loading" || authLoading) {
+      return (
+        <div className="invite-panel">
+          <p>Checking your invitation...</p>
+        </div>
+      );
+    }
+
+    if (invite.kind === "invalid") {
+      return (
+        <div className="invite-panel invite-panel-error">
+          <strong>This invitation link is not valid.</strong>
+          <p>
+            It may have been revoked, or a newer invitation was sent.
+            Ask the workspace admin to send it again.
+          </p>
+          <Link className="invite-panel-link" to="/login">
+            Go to sign in
+          </Link>
+        </div>
+      );
+    }
+
+    if (!preview) {
+      return null;
+    }
+
+    if (preview.status === "ACCEPTED") {
+      return (
+        <div className="invite-panel">
+          <strong>This invitation was already accepted.</strong>
+          <p>Sign in with {preview.email} to open {preview.organization_name}.</p>
+          <Link className="invite-panel-button" to="/login">
+            Sign in
+          </Link>
+        </div>
+      );
+    }
+
+    if (preview.status === "EXPIRED") {
+      return (
+        <div className="invite-panel invite-panel-error">
+          <strong>This invitation has expired.</strong>
+          <p>
+            Ask {preview.invited_by || "the workspace admin"} to resend
+            it from the Team page.
+          </p>
+        </div>
+      );
+    }
+
+    if (isAuthenticated) {
+      if (signedInAs.toLowerCase() === preview.email.toLowerCase()) {
+        return (
+          <div className="invite-panel">
+            <p>
+              You are signed in as <strong>{signedInAs}</strong>.
+            </p>
+            <button
+              type="button"
+              className="register-button"
+              onClick={handleAccept}
+              disabled={isSubmitting}
+            >
+              {isSubmitting
+                ? "Joining..."
+                : `Join ${preview.organization_name}`}
+            </button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="invite-panel invite-panel-error">
+          <strong>Different account.</strong>
+          <p>
+            You are signed in as {signedInAs}, but this invitation is
+            for <strong>{preview.email}</strong>. Sign out, then open the
+            link again.
+          </p>
+          <button
+            type="button"
+            className="invite-panel-button"
+            onClick={() => void logout()}
+          >
+            Sign out
+          </button>
+        </div>
+      );
+    }
+
+    if (preview.account_exists) {
+      return (
+        <div className="invite-panel">
+          <p>
+            <strong>{preview.email}</strong> already has an account.
+            Sign in to accept the invitation.
+          </p>
+          <Link
+            className="invite-panel-button"
+            to={`/login?invite=${encodeURIComponent(urlInvitationToken)}`}
+          >
+            Sign in to accept
+          </Link>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div className="register-page">
       <div className="register-background" />
@@ -175,20 +371,26 @@ function Register() {
             </p>
           </div>
 
-          {isInvitationRegistration && (
+          {preview && (
             <div className="invitation-banner">
               <span className="banner-icon">✓</span>
 
               <div>
-                <strong>Invitation detected</strong>
+                <strong>
+                  Join {preview.organization_name} as{" "}
+                  {ROLE_LABEL[preview.role] ?? preview.role}
+                </strong>
 
                 <p>
-                  Your invitation token will be used
-                  automatically during registration.
+                  {preview.invited_by
+                    ? `${preview.invited_by} invited ${preview.email}.`
+                    : `Invitation for ${preview.email}.`}
                 </p>
               </div>
             </div>
           )}
+
+          {!showSignupForm && renderInvitePanel()}
 
           {error && (
             <div className="error-message">
@@ -197,6 +399,7 @@ function Register() {
             </div>
           )}
 
+          {showSignupForm && (
           <form
             className="register-form"
             onSubmit={handleSubmit}
@@ -252,7 +455,17 @@ function Register() {
                 placeholder="you@example.com"
                 autoComplete="email"
                 required
+                readOnly={preview !== null}
+                aria-readonly={preview !== null}
+                className={preview ? "input-locked" : undefined}
               />
+
+              {preview && (
+                <span className="field-hint">
+                  The invitation is for this email, so it can't be
+                  changed.
+                </span>
+              )}
             </div>
 
             {!isInvitationRegistration && (
@@ -363,6 +576,7 @@ function Register() {
                   : "Create account"}
             </button>
           </form>
+          )}
 
           <div className="login-link">
             Already have an account?{" "}
@@ -372,6 +586,56 @@ function Register() {
       </main>
 
       <style>{`
+        .invite-panel {
+          margin-bottom: 20px;
+          padding: 18px;
+          border-radius: 14px;
+          border: 1px solid rgba(99, 102, 241, 0.25);
+          background: rgba(99, 102, 241, 0.08);
+          color: #cbd5e1;
+          display: grid;
+          gap: 10px;
+        }
+
+        .invite-panel p {
+          margin: 0;
+          line-height: 1.5;
+        }
+
+        .invite-panel strong {
+          color: #f8fafc;
+        }
+
+        .invite-panel-error {
+          border-color: rgba(248, 113, 113, 0.3);
+          background: rgba(248, 113, 113, 0.08);
+        }
+
+        .invite-panel-button {
+          justify-self: start;
+          display: inline-flex;
+          align-items: center;
+          height: 40px;
+          padding: 0 18px;
+          border: 0;
+          border-radius: 10px;
+          background: linear-gradient(135deg, #6366f1, #7c3aed);
+          color: #ffffff;
+          font-weight: 650;
+          text-decoration: none;
+          cursor: pointer;
+        }
+
+        .invite-panel-link {
+          color: #a5b4fc;
+          font-weight: 600;
+        }
+
+        .input-locked {
+          opacity: 0.8;
+          cursor: not-allowed;
+        }
+
         * {
           box-sizing: border-box;
         }

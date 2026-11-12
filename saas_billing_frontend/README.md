@@ -5,10 +5,11 @@ See the [project README](../README.md) for features, architecture and setup.
 
 ```bash
 npm ci
-cp .env.example .env    # optional: VITE_API_BASE_URL (default http://127.0.0.1:8000/api)
+cp .env.example .env    # optional: VITE_API_BASE_URL (default /api, proxied to Django by Vite)
 npm run dev             # http://localhost:5173
 npm run build           # type-check (tsc -b) + production build to dist/
 npm run lint            # oxlint
+npm test                # Vitest + Testing Library
 ```
 
 Structure: `src/api` (typed API clients, JWT refresh in `client.ts`),

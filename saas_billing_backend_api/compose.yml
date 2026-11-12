@@ -53,8 +53,9 @@ services:
     container_name: saas_billing_web
     restart: unless-stopped
 
-    command: >
-      gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 120
+    # migrate + gunicorn (settings in gunicorn.conf.py); static files
+    # are collected when the image is built
+    command: ["./scripts/start-web.sh"]
 
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
@@ -74,6 +75,15 @@ services:
       DB_PORT: 5432
 
       REDIS_URL: redis://redis:6379/0
+      # Cache for throttles / login lockout (separate DB from Celery).
+      REDIS_CACHE_URL: redis://redis:6379/1
+
+      # Keep the load light on a dev PC (default would be 2 x CPU + 1).
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-3}
+      GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-120}
+
+      # Local HTTP: the refresh cookie can't require HTTPS here.
+      JWT_REFRESH_COOKIE_SECURE: ${JWT_REFRESH_COOKIE_SECURE:-False}
 
       SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-False}
 
@@ -132,6 +142,7 @@ services:
       DB_PORT: 5432
 
       REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
 
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
@@ -185,6 +196,7 @@ services:
       DB_PORT: 5432
 
       REDIS_URL: redis://redis:6379/0
+      REDIS_CACHE_URL: redis://redis:6379/1
 
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
       STRIPE_SUCCESS_URL: ${STRIPE_SUCCESS_URL}
@@ -234,6 +246,7 @@ services:
       --api-key ${STRIPE_SECRET_KEY}
       --device-name saas-billing-docker
       --forward-to http://web:8000/api/webhooks/stripe/
+      --events checkout.session.completed,checkout.session.async_payment_succeeded,customer.subscription.updated,customer.subscription.deleted,invoice.created,invoice.paid,invoice.payment_succeeded,invoice.payment_failed,charge.refunded,refund.created,refund.updated,credit_note.created,credit_note.updated,credit_note.voided
 
     depends_on:
       - web

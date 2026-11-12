@@ -575,7 +575,7 @@ class InvoiceCreationAPITests(InvoiceTestBase):
                 "currency": "USD",
                 "tax": "0.00",
                 "billing_email": "customer@example.com",
-                "items": [],
+                "items": [{"description": "Service", "quantity": 1, "unit_price": "10.00"}],
             },
             format="json",
         )
@@ -600,7 +600,7 @@ class InvoiceCreationAPITests(InvoiceTestBase):
                 "currency": "USD",
                 "tax": "0.00",
                 "billing_email": "other@example.com",
-                "items": [],
+                "items": [{"description": "Service", "quantity": 1, "unit_price": "10.00"}],
             },
             format="json",
         )
@@ -628,7 +628,7 @@ class InvoiceCreationAPITests(InvoiceTestBase):
                 "currency": "USD",
                 "tax": "0.00",
                 "billing_email": "customer@example.com",
-                "items": [],
+                "items": [{"description": "Service", "quantity": 1, "unit_price": "10.00"}],
             },
             format="json",
         )
@@ -1148,7 +1148,9 @@ class InvoiceSendTests(InvoiceTestBase):
             status.HTTP_401_UNAUTHORIZED,
         )
 
-    def test_only_draft_invoices_can_be_sent(self):
+    @patch("apps.invoices.views.send_invoice_email_task.delay")
+    def test_open_invoice_can_be_sent_again(self, mock_delay):
+        # Unpaid invoices can be re-sent (see test_invoice_sending.py).
         self.invoice.status = Invoice.Status.OPEN
         self.invoice.save(update_fields=["status"])
 
@@ -1160,12 +1162,7 @@ class InvoiceSendTests(InvoiceTestBase):
 
         self.assertEqual(
             response.status_code,
-            status.HTTP_400_BAD_REQUEST,
-        )
-
-        self.assertEqual(
-            response.data["detail"],
-            "Only draft invoices can be sent.",
+            status.HTTP_202_ACCEPTED,
         )
 
     def test_paid_invoice_cannot_be_sent(self):

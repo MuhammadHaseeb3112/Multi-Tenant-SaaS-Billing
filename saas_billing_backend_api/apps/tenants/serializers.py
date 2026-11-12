@@ -114,3 +114,13 @@ class AcceptInvitationSerializer(serializers.Serializer):
     token = serializers.CharField(
         max_length=500,
     )
+
+
+class CreateOrganizationSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255, trim_whitespace=True)
+    billing_email = serializers.EmailField(required=False)
+
+    def validate_name(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Name is required.")
+        return value.strip()

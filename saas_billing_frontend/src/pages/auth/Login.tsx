@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, Loader2, LockKeyhole, Mail } from "lucide-react";
 
+import { previewInvitation } from "../../api/tenants";
 import { useAuth } from "../../context/AuthContext";
+import DemoLogin from "./DemoLogin";
 
 import "./auth.css";
 
@@ -17,6 +19,34 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Arrived from an invitation for an existing account: fill in the
+  // invited email and go back to the invitation after signing in.
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get("invite") ?? "";
+  const [inviteFor, setInviteFor] = useState("");
+
+  useEffect(() => {
+    if (!inviteToken) {
+      return;
+    }
+
+    let cancelled = false;
+
+    previewInvitation(inviteToken)
+      .then((preview) => {
+        if (cancelled) return;
+        setEmail(preview.email);
+        setInviteFor(preview.organization_name);
+      })
+      .catch(() => {
+        // Invalid link: the invitation page explains it after sign-in.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -41,7 +71,12 @@ function Login() {
         password,
       });
 
-      navigate("/dashboard", { replace: true });
+      navigate(
+        inviteToken
+          ? `/accept-invitation?token=${encodeURIComponent(inviteToken)}`
+          : "/dashboard",
+        { replace: true },
+      );
     } catch (error: unknown) {
       if (
         typeof error === "object" &&
@@ -51,6 +86,7 @@ function Login() {
         const response = (
           error as {
             response?: {
+              status?: number;
               data?: {
                 detail?: string;
                 non_field_errors?: string[];
@@ -62,6 +98,15 @@ function Login() {
         ).response;
 
         const data = response?.data;
+
+        // No answer at all, or a server-side failure: the password is
+        // not the problem, so don't blame the credentials.
+        if (!response || (response.status ?? 0) >= 500) {
+          setError(
+            "The server is not responding. Please try again in a moment.",
+          );
+          return;
+        }
 
         setError(
           data?.detail ||
@@ -91,8 +136,9 @@ function Login() {
           <h1>Welcome back</h1>
 
           <p>
-            Sign in to manage your subscriptions, invoices, and
-            billing.
+            {inviteFor
+              ? `Sign in to accept your invitation to ${inviteFor}.`
+              : "Sign in to manage your subscriptions, invoices, and billing."}
           </p>
         </div>
 
@@ -101,6 +147,15 @@ function Login() {
             {error}
           </div>
         )}
+
+        <DemoLogin
+          disabled={isSubmitting}
+          onPick={(demoEmail, demoPassword) => {
+            setEmail(demoEmail);
+            setPassword(demoPassword);
+            setError("");
+          }}
+        />
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
@@ -125,6 +180,10 @@ function Login() {
           <div className="form-group">
             <div className="password-label-row">
               <label htmlFor="password">Password</label>
+
+              <Link className="forgot-link" to="/forgot-password">
+                Forgot password?
+              </Link>
             </div>
 
             <div className="input-wrapper">

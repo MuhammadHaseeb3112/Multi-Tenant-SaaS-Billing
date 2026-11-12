@@ -24,6 +24,16 @@ export interface AnalyticsOverview {
   // SUCCEEDED payments). Added in Phase 6.
   total_paid?: string;
 
+  // Money collected from the organization's own customers
+  // (invoice checkouts + manual payments), kept apart from the
+  // subscription fees it paid the platform.
+  collected_from_customers?: string;
+  paid_to_platform?: string;
+  open_invoices?: {
+    count: number;
+    amount: string;
+  };
+
   churn: {
     churned: number;
     churn_rate: number;

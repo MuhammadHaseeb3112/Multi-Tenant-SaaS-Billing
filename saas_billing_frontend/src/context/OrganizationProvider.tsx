@@ -75,6 +75,13 @@ export function OrganizationProvider({
     [organizations],
   );
 
+  const selectNewOrganization = useCallback(
+    (organizationId: string) => {
+      setSelectedOrganizationId(organizationId);
+    },
+    [],
+  );
+
   return (
     <OrganizationContext.Provider
       value={{
@@ -82,6 +89,7 @@ export function OrganizationProvider({
         activeOrganization,
         activeOrganizationId,
         setActiveOrganization,
+        selectNewOrganization,
       }}
     >
       {children}

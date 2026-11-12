@@ -3,15 +3,20 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://127.0.0.1:8000/api";
+import { getAccessToken, setAccessToken } from "./tokenStore";
+
+// Same-origin by default: Vite (dev) and nginx (production) proxy /api to
+// Django, so the httpOnly refresh cookie is first-party.
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "/api";
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },
+  // Send the refresh cookie (needed only if the API is on another origin).
+  withCredentials: true,
 });
 
 interface RetryableRequestConfig
@@ -19,39 +24,66 @@ interface RetryableRequestConfig
   _retry?: boolean;
 }
 
+const AUTH_ENDPOINTS = [
+  "/auth/login/",
+  "/auth/register/",
+  "/auth/token/refresh/",
+  "/auth/logout/",
+];
+
 /*
 |--------------------------------------------------------------------------
-| Request Interceptor
+| Access token refresh (single flight)
 |--------------------------------------------------------------------------
-| Automatically attach the access token to every API request.
+| Refresh tokens rotate (the old one is blacklisted on use), so parallel
+| 401s must share ONE refresh request; otherwise the second refresh would
+| use an already-blacklisted token and log the user out.
 */
-apiClient.interceptors.request.use(
-  (config) => {
-    const accessToken =
-      localStorage.getItem("access_token");
+let refreshPromise: Promise<string | null> | null = null;
 
-    if (accessToken) {
-      config.headers.Authorization =
-        `Bearer ${accessToken}`;
-    }
+export const refreshAccessToken = (): Promise<string | null> => {
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post<{ access: string }>(
+        `${API_BASE_URL}/auth/token/refresh/`,
+        null,
+        { withCredentials: true },
+      )
+      .then((response) => {
+        setAccessToken(response.data.access);
+        return response.data.access;
+      })
+      .catch(() => {
+        setAccessToken(null);
+        return null;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
 
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
+  return refreshPromise;
+};
 
 /*
 |--------------------------------------------------------------------------
-| Response Interceptor
+| Request interceptor: attach the in-memory access token.
 |--------------------------------------------------------------------------
-| If the access token expires:
-|
-| 1. Get refresh token
-| 2. Request a new access token
-| 3. Save it
-| 4. Retry the original request
-|
-| If refresh fails, clear authentication.
+*/
+apiClient.interceptors.request.use((config) => {
+  const accessToken = getAccessToken();
+
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+
+  return config;
+});
+
+/*
+|--------------------------------------------------------------------------
+| Response interceptor: on 401, refresh once and retry the request.
+|--------------------------------------------------------------------------
 */
 apiClient.interceptors.response.use(
   (response) => response,
@@ -60,9 +92,6 @@ apiClient.interceptors.response.use(
     const originalRequest =
       error.config as RetryableRequestConfig | undefined;
 
-    /*
-     * Only handle 401 responses.
-     */
     if (
       error.response?.status !== 401 ||
       !originalRequest ||
@@ -71,91 +100,23 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    /*
-     * Never try to refresh the token for the
-     * authentication endpoints themselves.
-     */
     const requestUrl = originalRequest.url || "";
 
-    if (
-      requestUrl.includes("/auth/login/") ||
-      requestUrl.includes("/auth/register/") ||
-      requestUrl.includes("/auth/token/refresh/") ||
-      requestUrl.includes("/auth/logout/")
-    ) {
+    if (AUTH_ENDPOINTS.some((path) => requestUrl.includes(path))) {
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
 
-    const refreshToken =
-      localStorage.getItem("refresh_token");
+    const newAccessToken = await refreshAccessToken();
 
-    if (!refreshToken) {
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-
+    if (!newAccessToken) {
       return Promise.reject(error);
     }
 
-    try {
-      /*
-       * Use a separate Axios request here so the
-       * interceptor doesn't recursively intercept
-       * the refresh request.
-       */
-      const refreshResponse = await axios.post<{
-        access: string;
-        refresh?: string;
-      }>(
-        `${API_BASE_URL}/auth/token/refresh/`,
-        {
-          refresh: refreshToken,
-        },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      );
+    originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
 
-      const newAccessToken =
-        refreshResponse.data.access;
-
-      localStorage.setItem(
-        "access_token",
-        newAccessToken,
-      );
-
-      /*
-       * SimpleJWT rotation can return a new
-       * refresh token.
-       */
-      if (refreshResponse.data.refresh) {
-        localStorage.setItem(
-          "refresh_token",
-          refreshResponse.data.refresh,
-        );
-      }
-
-      /*
-       * Retry original request using the
-       * newly generated access token.
-       */
-      originalRequest.headers.Authorization =
-        `Bearer ${newAccessToken}`;
-
-      return apiClient(originalRequest);
-    } catch (refreshError) {
-      /*
-       * Refresh token is invalid/expired.
-       * User must log in again.
-       */
-      localStorage.removeItem("access_token");
-      localStorage.removeItem("refresh_token");
-
-      return Promise.reject(refreshError);
-    }
+    return apiClient(originalRequest);
   },
 );
 

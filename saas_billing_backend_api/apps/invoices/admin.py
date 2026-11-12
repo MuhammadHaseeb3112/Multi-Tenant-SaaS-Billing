@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Invoice, InvoiceItem, Payment
+from .models import CreditNote, Invoice, InvoiceItem, Payment, Refund
 
 
 class InvoiceItemInline(admin.TabularInline):
@@ -65,6 +65,7 @@ class PaymentAdmin(admin.ModelAdmin):
         "paid_at",
         "organization",
         "amount",
+        "amount_refunded",
         "currency",
         "method",
         "status",
@@ -83,6 +84,7 @@ class PaymentAdmin(admin.ModelAdmin):
         "organization",
         "invoice",
         "amount",
+        "amount_refunded",
         "currency",
         "method",
         "stripe_invoice_id",
@@ -92,3 +94,52 @@ class PaymentAdmin(admin.ModelAdmin):
         "paid_at",
         "created_at",
     ]
+
+
+class ReadOnlyMoneyAdmin(admin.ModelAdmin):
+    """Created only from Stripe webhooks; never edited by hand."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Refund)
+class RefundAdmin(ReadOnlyMoneyAdmin):
+    list_display = (
+        "stripe_refund_id",
+        "organization",
+        "payment",
+        "amount",
+        "currency",
+        "status",
+        "refunded_at",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "stripe_refund_id",
+        "stripe_payment_intent_id",
+        "organization__name",
+    )
+
+
+@admin.register(CreditNote)
+class CreditNoteAdmin(ReadOnlyMoneyAdmin):
+    list_display = (
+        "number",
+        "organization",
+        "invoice",
+        "amount",
+        "currency",
+        "status",
+        "issued_at",
+    )
+    list_filter = ("status",)
+    search_fields = (
+        "number",
+        "stripe_credit_note_id",
+        "stripe_invoice_id",
+        "organization__name",
+    )

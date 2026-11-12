@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   Bell,
   Check,
   CheckCheck,
   RefreshCw,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 import { useOrganization } from "../../context/OrganizationContext";
+import { notifyNotificationsChanged } from "../../hooks/useUnreadNotifications";
 import {
   getNotifications,
   markAllNotificationsAsRead,
@@ -52,7 +51,6 @@ const getNotificationIcon = (type: string) => {
 };
 
 function NotificationsPage() {
-  const navigate = useNavigate();
 
   const { activeOrganizationId } = useOrganization();
 
@@ -128,6 +126,8 @@ function NotificationsPage() {
             : notification,
         ),
       );
+
+      notifyNotificationsChanged();
     } catch (err) {
       console.error(
         "Failed to mark notification as read:",
@@ -155,6 +155,8 @@ function NotificationsPage() {
             new Date().toISOString(),
         })),
       );
+
+      notifyNotificationsChanged();
     } catch (err) {
       console.error(
         "Failed to mark all notifications as read:",
@@ -168,14 +170,6 @@ function NotificationsPage() {
       <div className="notifications-container">
         <header className="notifications-header">
           <div className="notifications-title-group">
-            <button
-              type="button"
-              className="notifications-back"
-              onClick={() => navigate("/dashboard")}
-              aria-label="Back to dashboard"
-            >
-              <ArrowLeft size={20} />
-            </button>
 
             <div>
               <h1>Notifications</h1>

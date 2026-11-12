@@ -1,24 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   RefreshCw,
   Search,
   UserPlus,
   Shield,
   X,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { useOrganization } from "../../context/OrganizationContext";
 import {
+  getInvitations,
   getTeamMembers,
   inviteTeamMember,
   removeTeamMember,
+  resendInvitation,
+  revokeInvitation,
   updateTeamMember,
 } from "../../api/tenants";
 
 import type {
+  Invitation,
   InviteMemberData,
   MemberRole,
   TeamMember,
@@ -26,7 +28,6 @@ import type {
 
 function TeamPage() {
 
-    const navigate = useNavigate();
     const { user } = useAuth();
     const { activeOrganization } = useOrganization();
 
@@ -40,6 +41,7 @@ function TeamPage() {
       (currentRole === "OWNER" || currentRole === "ADMIN"),
   );
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
 
   const [showInvite, setShowInvite] = useState(false);
@@ -51,6 +53,92 @@ function TeamPage() {
 
   const canManageTeam =
     currentRole === "OWNER" || currentRole === "ADMIN";
+
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [invitationsError, setInvitationsError] = useState("");
+  const [busyInvitation, setBusyInvitation] = useState<string | null>(null);
+
+  const fetchInvitations = useCallback(async () => {
+    if (!organizationId || !canManageTeam) {
+      return;
+    }
+
+    await getInvitations(organizationId)
+      .then((data) => {
+        setInvitations(data);
+        setInvitationsError("");
+      })
+      .catch((err: unknown) => {
+        console.error("Failed to load invitations:", err);
+        setInvitationsError("Failed to load invitations.");
+      });
+  }, [organizationId, canManageTeam]);
+
+  useEffect(() => {
+    void fetchInvitations();
+  }, [fetchInvitations]);
+
+  const showNotice = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 5000);
+  };
+
+  const apiErrorMessage = (err: unknown, fallback: string) => {
+    const data = (err as { response?: { data?: unknown } })?.response
+      ?.data;
+
+    if (data && typeof data === "object") {
+      const detail = (data as { detail?: unknown }).detail;
+      if (typeof detail === "string") return detail;
+
+      const first = Object.values(data)
+        .flat()
+        .find((value) => typeof value === "string");
+      if (typeof first === "string") return first;
+    }
+
+    return fallback;
+  };
+
+  const handleResend = async (invitation: Invitation) => {
+    if (!organizationId) return;
+
+    setBusyInvitation(invitation.id);
+
+    try {
+      await resendInvitation(organizationId, invitation.id);
+      showNotice(`Invitation sent again to ${invitation.email}.`);
+      await fetchInvitations();
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to resend invitation."));
+    } finally {
+      setBusyInvitation(null);
+    }
+  };
+
+  const handleRevoke = async (invitation: Invitation) => {
+    if (!organizationId) return;
+
+    const confirmed = window.confirm(
+      `Cancel the invitation for ${invitation.email}? The link in their email will stop working.`,
+    );
+
+    if (!confirmed) return;
+
+    setBusyInvitation(invitation.id);
+
+    try {
+      await revokeInvitation(organizationId, invitation.id);
+      setInvitations((current) =>
+        current.filter((item) => item.id !== invitation.id),
+      );
+      showNotice(`Invitation for ${invitation.email} was cancelled.`);
+    } catch (err) {
+      alert(apiErrorMessage(err, "Failed to cancel invitation."));
+    } finally {
+      setBusyInvitation(null);
+    }
+  };
 
   // Fetches and stores data; sets no state before the request, so it can
   // run straight from the mount effect. The members API is OWNER/ADMIN
@@ -85,7 +173,7 @@ function TeamPage() {
     setLoading(true);
     setError("");
 
-    await fetchMembers();
+    await Promise.all([fetchMembers(), fetchInvitations()]);
   };
 
   const filteredMembers = useMemo(() => {
@@ -143,17 +231,28 @@ const handleInvite = async () => {
         data,
       );
 
-      setInviteMessage(
-        response.message || "Invitation sent successfully.",
+      // Close the form and confirm on the page itself.
+      setInviteMessage("");
+      setShowInvite(false);
+      showNotice(
+        `${response.message || "Invitation sent successfully."} (${data.email})`,
       );
+      void fetchInvitations();
 
       setInviteEmail("");
       setInviteRole("MEMBER");
     } catch (err: any) {
       console.error("Invitation failed:", err);
 
+      const data = err?.response?.data;
+      const firstFieldError =
+        data && typeof data === "object"
+          ? Object.values(data).flat().find((v) => typeof v === "string")
+          : undefined;
+
       const message =
-        err?.response?.data?.detail ||
+        data?.detail ||
+        (firstFieldError as string | undefined) ||
         "Failed to send invitation.";
 
       setInviteMessage(message);
@@ -218,6 +317,7 @@ const handleInvite = async () => {
           (item) => item.user_id !== member.user_id,
         ),
       );
+      showNotice(`${member.email} was removed from this organization.`);
     } catch (err: any) {
       console.error("Failed to remove member:", err);
 
@@ -307,6 +407,22 @@ const handleInvite = async () => {
 
         .invite-button:hover {
           opacity: .92;
+        }
+
+        .team-notice {
+          margin-bottom: 16px;
+          padding: 12px 16px;
+          border-radius: 12px;
+          border: 1px solid rgba(34, 197, 94, 0.3);
+          background: rgba(34, 197, 94, 0.1);
+          color: #86efac;
+          font-size: 14px;
+          animation: team-notice-in 0.3s ease;
+        }
+
+        @keyframes team-notice-in {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: none; }
         }
 
         .team-toolbar {
@@ -491,6 +607,71 @@ const handleInvite = async () => {
           background: rgba(239,68,68,.13);
         }
 
+        .remove-button:disabled,
+        .resend-button:disabled {
+          opacity: .5;
+          cursor: not-allowed;
+        }
+
+        .invitations-section {
+          margin-top: 28px;
+        }
+
+        .invitations-head {
+          margin-bottom: 12px;
+        }
+
+        .invitations-head h2 {
+          margin: 0;
+          font-size: 18px;
+          color: #f8fafc;
+        }
+
+        .invitations-head p {
+          margin: 4px 0 0;
+          color: #64748b;
+          font-size: 13px;
+        }
+
+        .member-email-cell {
+          color: #e2e8f0;
+          font-weight: 600;
+        }
+
+        .invite-pending {
+          background: rgba(245,158,11,.12);
+          color: #fbbf24;
+        }
+
+        .invite-accepted {
+          background: rgba(16,185,129,.12);
+          color: #34d399;
+        }
+
+        .invite-expired {
+          background: rgba(148,163,184,.12);
+          color: #94a3b8;
+        }
+
+        .invite-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .resend-button {
+          height: 34px;
+          padding: 0 11px;
+          border: 1px solid rgba(99,102,241,.3);
+          border-radius: 8px;
+          background: rgba(99,102,241,.08);
+          color: #a5b4fc;
+          cursor: pointer;
+        }
+
+        .resend-button:hover {
+          background: rgba(99,102,241,.15);
+        }
+
         .empty-state,
         .loading-state,
         .error-state {
@@ -651,13 +832,6 @@ const handleInvite = async () => {
       <div className="team-container">
         <div className="team-header">
           <div className="team-title-row">
-            <button
-              className="back-button"
-              onClick={() => navigate("/dashboard")}
-              title="Back to Dashboard"
-            >
-              <ArrowLeft size={19} />
-            </button>
 
             <div>
               <h1 className="team-title">
@@ -683,6 +857,12 @@ const handleInvite = async () => {
             </button>
           )}
         </div>
+
+        {notice && (
+          <div className="team-notice" role="status">
+            {notice}
+          </div>
+        )}
 
         <div className="team-toolbar">
           <div className="search-wrapper">
@@ -853,6 +1033,105 @@ const handleInvite = async () => {
             </div>
           )}
         </div>
+
+        {canManageTeam && (
+          <section className="invitations-section" aria-labelledby="invitations-title">
+            <div className="invitations-head">
+              <h2 id="invitations-title">Invitations</h2>
+              <p>
+                Everyone you invited and where their invitation stands.
+                Links expire after 7 days.
+              </p>
+            </div>
+
+            <div className="team-card">
+              {invitationsError ? (
+                <div className="error-state">{invitationsError}</div>
+              ) : invitations.length === 0 ? (
+                <div className="empty-state">
+                  No invitations sent yet.
+                </div>
+              ) : (
+                <div className="team-table-wrapper">
+                  <table className="team-table">
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Invited by</th>
+                        <th>Sent</th>
+                        <th>Expires</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {invitations.map((invitation) => {
+                        const isAccepted =
+                          invitation.status === "ACCEPTED";
+                        const busy = busyInvitation === invitation.id;
+
+                        return (
+                          <tr key={invitation.id}>
+                            <td className="member-email-cell">
+                              {invitation.email}
+                            </td>
+                            <td>{formatRole(invitation.role)}</td>
+                            <td>
+                              <span
+                                className={`status invite-${invitation.status.toLowerCase()}`}
+                              >
+                                {formatRole(invitation.status)}
+                              </span>
+                            </td>
+                            <td>{invitation.invited_by || "—"}</td>
+                            <td>
+                              {new Date(
+                                invitation.created_at,
+                              ).toLocaleDateString()}
+                            </td>
+                            <td>
+                              {isAccepted
+                                ? "—"
+                                : new Date(
+                                    invitation.expires_at,
+                                  ).toLocaleDateString()}
+                            </td>
+                            <td>
+                              {!isAccepted && (
+                                <div className="invite-actions">
+                                  <button
+                                    className="resend-button"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void handleResend(invitation)
+                                    }
+                                  >
+                                    Resend
+                                  </button>
+                                  <button
+                                    className="remove-button"
+                                    disabled={busy}
+                                    onClick={() =>
+                                      void handleRevoke(invitation)
+                                    }
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
       </div>
 
       {showInvite && (

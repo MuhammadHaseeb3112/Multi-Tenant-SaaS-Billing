@@ -42,3 +42,14 @@ class AuditLogAdmin(admin.ModelAdmin):
     ]
 
     ordering = ["-created_at"]
+
+    # An audit trail must be tamper-proof: it can be read and searched
+    # here, never added, edited or deleted.
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

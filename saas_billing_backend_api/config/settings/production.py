@@ -38,13 +38,25 @@ ALLOWED_HOSTS = env.list(
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("DB_NAME"),
-        "USER": env("DB_USER"),
-        "PASSWORD": env("DB_PASSWORD"),
+        "NAME": env("DB_NAME", default=""),
+        "USER": env("DB_USER", default=""),
+        "PASSWORD": env("DB_PASSWORD", default=""),
         "HOST": env("DB_HOST", default="localhost"),
         "PORT": env("DB_PORT", default="5432"),
+        # Reuse connections across requests instead of opening one per
+        # request (big latency win); health-checked before reuse.
+        "CONN_MAX_AGE": env.int("DB_CONN_MAX_AGE", default=60),
+        "CONN_HEALTH_CHECKS": True,
+        "OPTIONS": {
+            # Managed databases (Render, Railway, Neon...) need SSL.
+            "sslmode": env("DB_SSLMODE", default="prefer"),
+        },
     }
 }
+
+# Hosted platforms usually provide one DATABASE_URL instead.
+if env("DATABASE_URL", default=""):
+    DATABASES["default"].update(env.db("DATABASE_URL"))
 
 
 # =============================================================================
@@ -60,6 +72,7 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 SESSION_COOKIE_SECURE = True
+JWT_REFRESH_COOKIE_SECURE = env.bool("JWT_REFRESH_COOKIE_SECURE", default=True)
 CSRF_COOKIE_SECURE = True
 
 SESSION_COOKIE_HTTPONLY = True
@@ -153,6 +166,24 @@ DEFAULT_FROM_EMAIL = env(
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# Static files (Django admin) served by gunicorn via WhiteNoise, right
+# after SecurityMiddleware, with compression + long cache headers.
+MIDDLEWARE = list(MIDDLEWARE)
+MIDDLEWARE.insert(
+    MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+)
+
+# Hashed, compressed static files served by WhiteNoise.
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 
 # =============================================================================

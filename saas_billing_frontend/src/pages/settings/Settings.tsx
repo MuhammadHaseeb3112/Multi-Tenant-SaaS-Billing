@@ -1,23 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  ArrowLeft,
-  Bell,
   Building2,
   Check,
   Lock,
   LogOut,
-  Mail,
   Save,
   Shield,
   User,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { changePassword, updateProfile } from "../../api/auth";
+import { firstApiError } from "../../utils/apiErrors";
 import { useAuth } from "../../context/AuthContext";
 import { useOrganization } from "../../context/OrganizationContext";
 
+type SectionId = "profile" | "organization" | "security";
+
+const SECTIONS: { id: SectionId }[] = [
+  { id: "profile" },
+  { id: "organization" },
+  { id: "security" },
+];
+
 export default function Settings() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
 
   // Was the user's FIRST organization (wrong name/role after switching).
   const { activeOrganization: organization } = useOrganization();
@@ -32,13 +39,59 @@ export default function Settings() {
 
   const [email] = useState(user?.email ?? "");
 
-  const [emailNotifications, setEmailNotifications] =
-    useState(true);
-
-  const [billingNotifications, setBillingNotifications] =
-    useState(true);
-
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  // Change password form (Security section).
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordNotice, setPasswordNotice] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+
+  // Side menu: clicking scrolls to the section, scrolling updates
+  // which item is highlighted.
+  const [activeSection, setActiveSection] =
+    useState<SectionId>("profile");
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort(
+            (a, b) =>
+              a.boundingClientRect.top - b.boundingClientRect.top,
+          )[0];
+
+        if (visible) {
+          setActiveSection(visible.target.id as SectionId);
+        }
+      },
+      { rootMargin: "-15% 0px -60% 0px" },
+    );
+
+    SECTIONS.forEach(({ id }) => {
+      const element = document.getElementById(id);
+      if (element) observer.observe(element);
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  const goToSection = (id: SectionId) => {
+    setActiveSection(id);
+    document
+      .getElementById(id)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const initials = useMemo(() => {
     const first = firstName?.charAt(0) ?? "";
@@ -53,14 +106,73 @@ export default function Settings() {
     return email?.charAt(0)?.toUpperCase() || "U";
   }, [firstName, lastName, email]);
 
-  const handleSave = () => {
-    // Profile update API can be connected here
-    // when the backend profile-update endpoint is added.
-    setSaved(true);
+  const handleSave = async () => {
+    if (!firstName.trim()) {
+      setSaveError("First name is required.");
+      return;
+    }
 
-    window.setTimeout(() => {
-      setSaved(false);
-    }, 2500);
+    setSaving(true);
+    setSaveError("");
+
+    try {
+      const updated = await updateProfile({
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+      });
+
+      setFirstName(updated.first_name);
+      setLastName(updated.last_name);
+
+      // The rest of the app (greeting, avatar) reads the user
+      // from the auth context.
+      await refreshUser();
+
+      setSaved(true);
+      window.setTimeout(() => setSaved(false), 2500);
+    } catch (err) {
+      setSaveError(firstApiError(err, "Could not save your profile."));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const closePasswordForm = () => {
+    setShowPasswordForm(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordError("");
+  };
+
+  const handleChangePassword = async (event: FormEvent) => {
+    event.preventDefault();
+    setPasswordNotice("");
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("The two new passwords do not match.");
+      return;
+    }
+
+    setChangingPassword(true);
+    setPasswordError("");
+
+    try {
+      const message = await changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+        new_password_confirm: confirmPassword,
+      });
+
+      closePasswordForm();
+      setPasswordNotice(message);
+    } catch (err) {
+      setPasswordError(
+        firstApiError(err, "Could not change your password."),
+      );
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -170,6 +282,10 @@ export default function Settings() {
           grid-template-columns: 240px minmax(0, 1fr);
           gap: 24px;
           align-items: start;
+        }
+
+        .settings-card {
+          scroll-margin-top: 24px;
         }
 
         .settings-sidebar {
@@ -497,6 +613,55 @@ export default function Settings() {
           background: rgba(239, 68, 68, 0.13);
         }
 
+        .save-error {
+          color: #fca5a5;
+          font-size: 14px;
+        }
+
+        .save-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .password-form {
+          display: grid;
+          gap: 16px;
+          max-width: 440px;
+          margin: 4px 0 22px;
+          padding: 18px;
+          border: 1px solid rgba(148, 163, 184, 0.14);
+          border-radius: 14px;
+          background: rgba(15, 23, 42, 0.45);
+        }
+
+        .password-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 10px;
+        }
+
+        .password-error {
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid rgba(248, 113, 113, 0.3);
+          background: rgba(248, 113, 113, 0.08);
+          color: #fca5a5;
+          font-size: 14px;
+        }
+
+        .password-notice {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 4px 0 18px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          background: rgba(16, 185, 129, 0.1);
+          color: #34d399;
+          font-size: 14px;
+        }
+
         .saved-message {
           display: flex;
           align-items: center;
@@ -574,14 +739,6 @@ export default function Settings() {
       <div className="settings-container">
         <header className="settings-header">
           <div className="settings-heading">
-            <button
-              type="button"
-              className="back-button"
-              onClick={() => navigate("/dashboard")}
-              aria-label="Back to dashboard"
-            >
-              <ArrowLeft size={23} />
-            </button>
 
             <div>
               <h1 className="settings-title">
@@ -590,26 +747,33 @@ export default function Settings() {
 
               <p className="settings-subtitle">
                 Manage your profile, organization and
-                notification preferences.
+                account security.
               </p>
             </div>
           </div>
 
           <div className="header-actions">
             {saved && (
-              <span className="saved-message">
+              <span className="saved-message" role="status">
                 <Check size={17} />
                 Saved
+              </span>
+            )}
+
+            {saveError && (
+              <span className="save-error" role="alert">
+                {saveError}
               </span>
             )}
 
             <button
               type="button"
               className="save-button"
-              onClick={handleSave}
+              onClick={() => void handleSave()}
+              disabled={saving}
             >
               <Save size={17} />
-              Save Changes
+              {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
         </header>
@@ -618,7 +782,9 @@ export default function Settings() {
           <aside className="settings-sidebar">
             <button
               type="button"
-              className="settings-nav-item active"
+              className={`settings-nav-item ${activeSection === "profile" ? "active" : ""}`}
+              aria-current={activeSection === "profile" ? "true" : undefined}
+              onClick={() => goToSection("profile")}
             >
               <User size={17} />
               Profile
@@ -626,7 +792,9 @@ export default function Settings() {
 
             <button
               type="button"
-              className="settings-nav-item"
+              className={`settings-nav-item ${activeSection === "organization" ? "active" : ""}`}
+              aria-current={activeSection === "organization" ? "true" : undefined}
+              onClick={() => goToSection("organization")}
             >
               <Building2 size={17} />
               Organization
@@ -634,24 +802,19 @@ export default function Settings() {
 
             <button
               type="button"
-              className="settings-nav-item"
+              className={`settings-nav-item ${activeSection === "security" ? "active" : ""}`}
+              aria-current={activeSection === "security" ? "true" : undefined}
+              onClick={() => goToSection("security")}
             >
               <Shield size={17} />
               Security
             </button>
 
-            <button
-              type="button"
-              className="settings-nav-item"
-            >
-              <Bell size={17} />
-              Notifications
-            </button>
           </aside>
 
           <main className="settings-content">
             {/* Profile */}
-            <section className="settings-card">
+            <section id="profile" className="settings-card">
               <div className="card-header">
                 <div className="card-title-row">
                   <div className="card-icon">
@@ -745,8 +908,8 @@ export default function Settings() {
                     />
 
                     <span className="help-text">
-                      Email address is managed by your
-                      account.
+                      Your email is your sign-in and can't be
+                      changed here.
                     </span>
                   </div>
                 </div>
@@ -754,7 +917,7 @@ export default function Settings() {
             </section>
 
             {/* Organization */}
-            <section className="settings-card">
+            <section id="organization" className="settings-card">
               <div className="card-header">
                 <div className="card-title-row">
                   <div className="card-icon">
@@ -820,7 +983,7 @@ export default function Settings() {
             </section>
 
             {/* Security */}
-            <section className="settings-card">
+            <section id="security" className="settings-card">
               <div className="card-header">
                 <div className="card-title-row">
                   <div className="card-icon">
@@ -852,23 +1015,135 @@ export default function Settings() {
                       </div>
 
                       <div className="row-description">
-                        Password management can be
-                        connected to the backend endpoint.
+                        Changing it signs you out on every
+                        other device.
                       </div>
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => {
-                      // Password change endpoint can be
-                      // connected when available.
-                    }}
-                  >
-                    Change Password
-                  </button>
+                  {!showPasswordForm && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setPasswordNotice("");
+                        setShowPasswordForm(true);
+                      }}
+                    >
+                      Change Password
+                    </button>
+                  )}
                 </div>
+
+                {passwordNotice && (
+                  <div className="password-notice" role="status">
+                    <Check size={16} />
+                    {passwordNotice}
+                  </div>
+                )}
+
+                {showPasswordForm && (
+                  <form
+                    className="password-form"
+                    onSubmit={(event) => void handleChangePassword(event)}
+                  >
+                    <div className="form-group">
+                      <label
+                        className="form-label"
+                        htmlFor="current-password"
+                      >
+                        Current password
+                      </label>
+
+                      <input
+                        id="current-password"
+                        type="password"
+                        className="form-input"
+                        value={currentPassword}
+                        onChange={(event) =>
+                          setCurrentPassword(event.target.value)
+                        }
+                        autoComplete="current-password"
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label
+                        className="form-label"
+                        htmlFor="new-password"
+                      >
+                        New password
+                      </label>
+
+                      <input
+                        id="new-password"
+                        type="password"
+                        className="form-input"
+                        value={newPassword}
+                        onChange={(event) =>
+                          setNewPassword(event.target.value)
+                        }
+                        autoComplete="new-password"
+                        minLength={8}
+                        required
+                      />
+
+                      <span className="help-text">
+                        At least 8 characters, not a common
+                        password and not only numbers.
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label
+                        className="form-label"
+                        htmlFor="confirm-password"
+                      >
+                        Confirm new password
+                      </label>
+
+                      <input
+                        id="confirm-password"
+                        type="password"
+                        className="form-input"
+                        value={confirmPassword}
+                        onChange={(event) =>
+                          setConfirmPassword(event.target.value)
+                        }
+                        autoComplete="new-password"
+                        required
+                      />
+                    </div>
+
+                    {passwordError && (
+                      <div className="password-error" role="alert">
+                        {passwordError}
+                      </div>
+                    )}
+
+                    <div className="password-actions">
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={closePasswordForm}
+                        disabled={changingPassword}
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="submit"
+                        className="save-button"
+                        disabled={changingPassword}
+                      >
+                        {changingPassword
+                          ? "Changing..."
+                          : "Update password"}
+                      </button>
+                    </div>
+                  </form>
+                )}
 
                 <div className="security-row">
                   <div className="row-left">
@@ -891,98 +1166,6 @@ export default function Settings() {
                   <span className="help-text">
                     JWT Enabled
                   </span>
-                </div>
-              </div>
-            </section>
-
-            {/* Notifications */}
-            <section className="settings-card">
-              <div className="card-header">
-                <div className="card-title-row">
-                  <div className="card-icon">
-                    <Bell size={19} />
-                  </div>
-
-                  <div>
-                    <h2 className="card-title">
-                      Notifications
-                    </h2>
-
-                    <p className="card-description">
-                      Choose which billing notifications
-                      you want to receive.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="card-body">
-                <div className="notification-row">
-                  <div className="row-left">
-                    <div className="row-icon">
-                      <Mail size={18} />
-                    </div>
-
-                    <div>
-                      <div className="row-title">
-                        Email notifications
-                      </div>
-
-                      <div className="row-description">
-                        Receive important organization
-                        activity notifications by email.
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={`toggle ${
-                      emailNotifications ? "on" : ""
-                    }`}
-                    onClick={() =>
-                      setEmailNotifications(
-                        (value) => !value,
-                      )
-                    }
-                    aria-label="Toggle email notifications"
-                  >
-                    <div className="toggle-knob" />
-                  </button>
-                </div>
-
-                <div className="notification-row">
-                  <div className="row-left">
-                    <div className="row-icon">
-                      <Bell size={18} />
-                    </div>
-
-                    <div>
-                      <div className="row-title">
-                        Billing notifications
-                      </div>
-
-                      <div className="row-description">
-                        Receive subscription, invoice and
-                        payment updates.
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    className={`toggle ${
-                      billingNotifications ? "on" : ""
-                    }`}
-                    onClick={() =>
-                      setBillingNotifications(
-                        (value) => !value,
-                      )
-                    }
-                    aria-label="Toggle billing notifications"
-                  >
-                    <div className="toggle-knob" />
-                  </button>
                 </div>
               </div>
             </section>

@@ -13,6 +13,9 @@ export interface UsageSummary {
   overage_price_per_1000: string;
   max_overage_requests: number | null;
   estimated_overage_amount: string;
+  // "custom" when the organization has its own usage deal.
+  limit_source?: "plan" | "custom";
+  plan_limit?: number | null;
 }
 
 export interface RecordUsageResponse {
@@ -124,6 +127,8 @@ export const listOverageCharges = async (
 
 // Base URL of the product API (/api/v1), derived from the dashboard API
 // base URL, for the "quick start" snippet.
-export const PRODUCT_API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000/api"
-).replace(/\/$/, "") + "/v1";
+export const PRODUCT_API_BASE_URL =
+  new URL(
+    (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "") + "/v1",
+    window.location.origin,
+  ).href.replace(/\/$/, "");

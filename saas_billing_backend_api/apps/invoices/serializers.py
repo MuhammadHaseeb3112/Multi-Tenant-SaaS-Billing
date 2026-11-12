@@ -58,6 +58,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "billing_email",
             "stripe_invoice_id",
             "items",
+            "sent_count",
+            "last_sent_at",
             "created_at",
             "updated_at",
         )
@@ -69,6 +71,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "subtotal",
             "total",
             "stripe_invoice_id",
+            "sent_count",
+            "last_sent_at",
             "created_at",
             "updated_at",
         )
@@ -112,6 +116,11 @@ class InvoiceSerializer(serializers.ModelSerializer):
                     }
                 )
 
+            self._check_amounts(
+                attrs.get("items") or [],
+                attrs.get("tax") or Decimal("0.00"),
+            )
+
             return attrs
 
         if self.instance.status != Invoice.Status.DRAFT:
@@ -133,7 +142,52 @@ class InvoiceSerializer(serializers.ModelSerializer):
                     }
                 )
 
+        elif "items" in attrs or "tax" in attrs:
+            # Editing a draft: it must still bill something.
+            if "items" in attrs:
+                items = attrs["items"] or []
+            else:
+                items = [
+                    {
+                        "quantity": item.quantity,
+                        "unit_price": item.unit_price,
+                    }
+                    for item in self.instance.items.all()
+                ]
+
+            self._check_amounts(
+                items,
+                attrs.get("tax", self.instance.tax),
+            )
+
         return attrs
+
+    @staticmethod
+    def _check_amounts(items, tax):
+        """
+        An invoice needs at least one item, and the items themselves
+        must add up to more than zero: tax alone is not a sale.
+        """
+
+        if not items:
+            raise serializers.ValidationError(
+                {"items": "Add at least one invoice item."}
+            )
+
+        subtotal = sum(
+            (item["quantity"] * item["unit_price"] for item in items),
+            Decimal("0.00"),
+        )
+
+        if subtotal <= 0:
+            raise serializers.ValidationError(
+                {
+                    "items": (
+                        "The invoice items must add up to an amount "
+                        "greater than zero. Tax alone cannot be invoiced."
+                    )
+                }
+            )
 
     def validate_status(self, value):
         if not self.instance:
@@ -302,6 +356,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             "invoice",
             "invoice_number",
             "amount",
+            "amount_refunded",
             "currency",
             "method",
             "status",

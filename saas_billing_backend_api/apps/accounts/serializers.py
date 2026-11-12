@@ -239,7 +239,7 @@ class RegisterSerializer(serializers.Serializer):
             )
 
             # Create membership in the EXISTING organization.
-            Membership.objects.create(
+            membership = Membership.objects.create(
                 user=user,
                 organization=invitation.organization,
                 role=invitation.role,
@@ -249,6 +249,17 @@ class RegisterSerializer(serializers.Serializer):
             invitation.accepted_at = timezone.now()
             invitation.save(
                 update_fields=["accepted_at"]
+            )
+
+            from apps.audit.services import create_audit_log
+
+            create_audit_log(
+                organization=invitation.organization,
+                user=user,
+                action="INVITATION_ACCEPTED",
+                resource_type="membership",
+                resource_id=membership.id,
+                description=f"{user.email} joined as {membership.role}.",
             )
 
             return user
@@ -294,23 +305,9 @@ class RegisterSerializer(serializers.Serializer):
         return user
 
     def _generate_slug(self, organization_name):
-        from django.utils.text import slugify
+        from apps.tenants.utils import unique_organization_slug
 
-        base_slug = slugify(organization_name)
-
-        # Extremely unusual, but slugify could theoretically
-        # produce an empty string.
-        if not base_slug:
-            base_slug = "organization"
-
-        slug = base_slug
-        counter = 1
-
-        while Organization.objects.filter(slug=slug).exists():
-            slug = f"{base_slug}-{counter}"
-            counter += 1
-
-        return slug
+        return unique_organization_slug(organization_name)
 
 class LoginSerializer(serializers.Serializer):
     email = serializers.EmailField()

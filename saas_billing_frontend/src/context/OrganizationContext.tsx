@@ -10,6 +10,10 @@ export interface OrganizationContextType {
   activeOrganization: Organization | null;
   activeOrganizationId: string | null;
   setActiveOrganization: (organizationId: string) => void;
+  // Select a workspace that was just created. It may not be in
+  // `organizations` yet (the user is reloading); until it appears the
+  // current workspace stays active.
+  selectNewOrganization: (organizationId: string) => void;
 }
 
 export const OrganizationContext =

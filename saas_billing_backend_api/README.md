@@ -15,6 +15,7 @@ Useful commands:
 
 | Command | Purpose |
 |---|---|
+| `python manage.py seed_demo [--reset]` | Demo users (`owner@`, `accountant@`, `member@demo.com`) and two demo workspaces; touches nothing else |
 | `python manage.py backfill_payments [--dry-run]` | Import Stripe invoices paid before the Payment ledger existed |
 | `python manage.py bill_overage --organization <uuid> --start <ISO> --end <ISO> [--dry-run]` | Bill a period's usage overage manually (missed webhook) |
 

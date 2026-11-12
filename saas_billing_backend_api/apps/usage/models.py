@@ -277,3 +277,160 @@ class OverageCharge(models.Model):
             f"{self.organization.name} - {self.overage_requests} extra "
             f"requests - {self.amount} {self.currency.upper()}"
         )
+
+
+class UsageLimitOverride(models.Model):
+    """
+    A per-organization deal that replaces the plan's usage terms.
+
+    Any field left empty falls back to the plan. Optional ``starts_at`` /
+    ``ends_at`` make the deal apply only to a date window, so a change
+    can be scheduled ahead (e.g. 100 requests this month, 80 from the
+    1st of next month). Windows for one organization may not overlap.
+    """
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    organization = models.ForeignKey(
+        "tenants.Organization",
+        on_delete=models.CASCADE,
+        related_name="usage_limit_overrides",
+    )
+
+    api_request_limit = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Requests included per billing period. Empty = plan's limit.",
+    )
+
+    overage_price_per_1000 = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text=(
+            "Price per 1,000 requests above the limit. "
+            "Empty = plan's price. 0 = hard limit for this organization."
+        ),
+    )
+
+    max_overage_requests = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Safety cap on overage per period. Empty = plan's cap.",
+    )
+
+    no_overage_cap = models.BooleanField(
+        default=False,
+        help_text="Remove the overage cap completely for this organization.",
+    )
+
+    starts_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Applies from this moment. Empty = immediately.",
+    )
+
+    ends_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Stops applying at this moment. Empty = no end.",
+    )
+
+    note = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Why this deal exists, e.g. 'Annual contract, signed 1 Nov'.",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["organization", "-starts_at"]
+        indexes = [
+            models.Index(fields=["organization", "starts_at", "ends_at"]),
+        ]
+
+    def __str__(self):
+        return f"Usage deal for {self.organization}"
+
+    def is_active_at(self, moment):
+        if self.starts_at and moment < self.starts_at:
+            return False
+        if self.ends_at and moment >= self.ends_at:
+            return False
+        return True
+
+    @property
+    def is_active(self):
+        return self.is_active_at(timezone.now())
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            raise ValidationError({"ends_at": "End must be after start."})
+
+        if self.no_overage_cap and self.max_overage_requests is not None:
+            raise ValidationError(
+                {
+                    "max_overage_requests": (
+                        "Leave this empty when 'No overage cap' is ticked."
+                    )
+                }
+            )
+
+        if not self.organization_id:
+            return
+
+        # Two deals for the same org must not cover the same moment,
+        # otherwise it would be unclear which limit applies.
+        from datetime import datetime, timezone as dt_timezone
+
+        far_past = datetime.min.replace(tzinfo=dt_timezone.utc)
+        far_future = datetime.max.replace(tzinfo=dt_timezone.utc)
+        start = self.starts_at or far_past
+        end = self.ends_at or far_future
+
+        others = UsageLimitOverride.objects.filter(
+            organization_id=self.organization_id
+        ).exclude(pk=self.pk)
+
+        for other in others:
+            other_start = other.starts_at or far_past
+            other_end = other.ends_at or far_future
+            if start < other_end and other_start < end:
+                raise ValidationError(
+                    "This date range overlaps another usage deal for "
+                    "this organization. Set start/end dates so they "
+                    "don't overlap."
+                )
+
+
+def active_override_for(organization_id, moment=None):
+    """The organization's deal that applies at ``moment`` (or None)."""
+
+    moment = moment or timezone.now()
+
+    return (
+        UsageLimitOverride.objects
+        .filter(organization_id=organization_id)
+        .filter(models.Q(starts_at__isnull=True) | models.Q(starts_at__lte=moment))
+        .filter(models.Q(ends_at__isnull=True) | models.Q(ends_at__gt=moment))
+        .order_by(models.F("starts_at").desc(nulls_last=True))
+        .first()
+    )

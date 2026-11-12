@@ -77,7 +77,7 @@ jobs:
         run: python -m pytest -q
 
   frontend:
-    name: Frontend (lint, type-check, build)
+    name: Frontend (lint, tests, type-check, build)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
 
@@ -96,5 +96,7 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      - name: Unit and component tests (Vitest)
+        run: npm test
       - name: Type-check and build
         run: npm run build

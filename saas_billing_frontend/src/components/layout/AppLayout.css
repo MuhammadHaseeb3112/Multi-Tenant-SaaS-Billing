@@ -1,0 +1,553 @@
+/* Shared signed-in shell: fixed sidebar + page area. */
+.app-shell {
+  min-height: 100vh;
+  width: 100%;
+  background: #0a0b10;
+}
+
+.app-shell .sidebar,
+.app-shell .sidebar * {
+  box-sizing: border-box;
+}
+
+.app-shell .sidebar {
+  /* Scroll inside the sidebar when the window is short. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  color: #f8fafc;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+  .app-shell .sidebar {
+    width: 250px;
+    min-height: 100vh;
+    background: rgba(15, 17, 24, 0.92);
+    border-right: 1px solid rgba(148, 163, 184, 0.12);
+    padding: 22px 14px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 50;
+    backdrop-filter: blur(18px);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .app-shell .brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 4px 10px 26px;
+  }
+
+  .app-shell .brand-logo {
+    width: 39px;
+    height: 39px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    font-weight: 800;
+    color: white;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    box-shadow:
+      0 8px 24px rgba(99, 102, 241, 0.28),
+      inset 0 1px rgba(255,255,255,0.25);
+  }
+
+  .app-shell .brand-name {
+    font-size: 17px;
+    font-weight: 750;
+    letter-spacing: -0.3px;
+  }
+
+  .app-shell .brand-subtitle {
+    color: #64748b;
+    font-size: 10px;
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .app-shell .workspace {
+    margin: 0 5px 24px;
+    padding: 12px;
+    border-radius: 13px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.07);
+  }
+
+  .app-shell .workspace-label {
+    color: #64748b;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .app-shell .workspace-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .app-shell .workspace-info {
+    min-width: 0;
+  }
+
+  .app-shell .workspace-name {
+    font-size: 13px;
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .app-shell .workspace-plan {
+    font-size: 11px;
+    color: #818cf8;
+    margin-top: 3px;
+  }
+
+  .app-shell .workspace-arrow {
+    color: #64748b;
+  }
+
+  .app-shell .nav-title {
+    padding: 0 11px 9px;
+    color: #475569;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    font-weight: 700;
+  }
+
+  .app-shell .nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .app-shell .nav-item {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: #94a3b8;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 12px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 550;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s ease;
+  }
+
+  .app-shell .nav-item:hover {
+    background: rgba(255,255,255,0.045);
+    color: #f8fafc;
+    transform: translateX(2px);
+  }
+
+  .app-shell .nav-item.active {
+    background: linear-gradient(
+      90deg,
+      rgba(99,102,241,0.18),
+      rgba(99,102,241,0.06)
+    );
+    color: #c7d2fe;
+  }
+
+  .app-shell .nav-item.active svg {
+    color: #818cf8;
+  }
+
+  .app-shell .sidebar-bottom {
+    margin-top: auto;
+  }
+
+  .app-shell .upgrade-card {
+    padding: 15px;
+    margin: 10px 4px 14px;
+    border-radius: 14px;
+    background:
+      radial-gradient(circle at top right, rgba(139,92,246,0.28), transparent 55%),
+      rgba(99,102,241,0.10);
+    border: 1px solid rgba(129,140,248,0.18);
+  }
+
+  .app-shell .upgrade-title {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .app-shell .upgrade-text {
+    color: #94a3b8;
+    font-size: 11px;
+    line-height: 1.5;
+    margin: 5px 0 12px;
+  }
+
+  .app-shell .upgrade-button {
+    width: 100%;
+    border: 0;
+    border-radius: 8px;
+    padding: 8px;
+    color: white;
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
+    font-weight: 650;
+    font-size: 11px;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .app-shell .upgrade-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(99,102,241,0.25);
+  }
+
+.app-shell .sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app-shell .sidebar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.25);
+  border-radius: 6px;
+}
+
+/* Short screens: tighter spacing so more of the menu fits. */
+@media (max-height: 820px) {
+  .app-shell .brand {
+    padding-bottom: 16px;
+  }
+
+  .app-shell .nav-item {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .app-shell .nav-list + .nav-title {
+    margin-top: 14px !important;
+  }
+
+  .app-shell .upgrade-card {
+    margin-top: 6px;
+    margin-bottom: 8px;
+  }
+}
+
+.app-shell-main {
+  margin-left: 250px;
+  min-width: 0;
+  min-height: 100vh;
+  position: relative;
+}
+
+.app-shell .mobile-overlay,
+.app-shell-topbar {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .app-shell .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+
+  .app-shell .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .app-shell-main {
+    margin-left: 0;
+  }
+
+  /* Room for the fixed top bar above each page's header. */
+  .app-shell-main.has-menu {
+    padding-top: 56px;
+  }
+
+  .app-shell .mobile-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 40;
+  }
+
+  /* A solid bar, so page content scrolls under it instead of showing
+     through around a lone floating button. */
+  .app-shell-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 35;
+    height: 56px;
+    padding: 0 14px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+    background: rgba(10, 11, 16, 0.94);
+    backdrop-filter: blur(16px);
+  }
+
+  .app-shell-topbar-title {
+    color: #e2e8f0;
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .app-shell-menu {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    background: rgba(15, 17, 24, 0.92);
+    color: #e2e8f0;
+    cursor: pointer;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Motion: subtle, quick, and disabled for users who prefer less.      */
+/* Fill mode "backwards" on page content: once an animation ends no    */
+/* transform is left behind, so fixed-position modals still work.      */
+/* ------------------------------------------------------------------ */
+
+@keyframes app-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes app-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes app-nav-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes app-route-progress {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+  }
+  70% {
+    transform: scaleX(0.85);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes app-logo-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 24px rgba(99, 102, 241, 0.28),
+      inset 0 1px rgba(255, 255, 255, 0.25);
+  }
+  50% {
+    box-shadow:
+      0 8px 30px rgba(139, 92, 246, 0.5),
+      inset 0 1px rgba(255, 255, 255, 0.25);
+  }
+}
+
+@keyframes app-shine {
+  from {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(220%) skewX(-20deg);
+  }
+}
+
+/* Thin progress line at the top whenever the page changes. */
+.app-route-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 100;
+  pointer-events: none;
+  transform-origin: left center;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #22d3ee);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.7);
+  animation: app-route-progress 0.6s ease-out forwards;
+}
+
+/* Every page fades up in, then its sections follow one after another. */
+.app-page {
+  animation: app-page-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.app-page > * > :not(style) {
+  animation: app-rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.app-page > * > :not(style):nth-child(2) { animation-delay: 0.05s; }
+.app-page > * > :not(style):nth-child(3) { animation-delay: 0.1s; }
+.app-page > * > :not(style):nth-child(4) { animation-delay: 0.15s; }
+.app-page > * > :not(style):nth-child(5) { animation-delay: 0.2s; }
+.app-page > * > :not(style):nth-child(n + 6) { animation-delay: 0.25s; }
+
+/* The dashboard already animates its own cards. */
+.app-page > .saas-dashboard > * {
+  animation: none;
+}
+
+.app-page .saas-dashboard .panel:nth-child(2) {
+  animation-delay: 0.08s;
+}
+
+.app-page .saas-dashboard .lower-grid .panel {
+  animation-delay: 0.16s;
+}
+
+.app-page .saas-dashboard .lower-grid .panel:nth-child(2) {
+  animation-delay: 0.22s;
+}
+
+/* Sidebar: items slide in once, then hover and active states animate. */
+.app-shell .brand-logo {
+  animation: app-logo-glow 4s ease-in-out infinite;
+}
+
+.app-shell .nav-list .nav-item {
+  position: relative;
+  animation: app-nav-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.app-shell .nav-list .nav-item:nth-child(2) { animation-delay: 0.03s; }
+.app-shell .nav-list .nav-item:nth-child(3) { animation-delay: 0.06s; }
+.app-shell .nav-list .nav-item:nth-child(4) { animation-delay: 0.09s; }
+.app-shell .nav-list .nav-item:nth-child(5) { animation-delay: 0.12s; }
+.app-shell .nav-list .nav-item:nth-child(6) { animation-delay: 0.15s; }
+
+.app-shell .nav-item svg {
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.app-shell .nav-item:hover svg {
+  transform: translateX(2px) scale(1.06);
+}
+
+.app-shell .nav-item:active {
+  transform: scale(0.98);
+}
+
+/* Glowing bar on the active item, grows in when the page changes. */
+.app-shell .nav-item::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: linear-gradient(180deg, #818cf8, #a855f7);
+  box-shadow: 0 0 12px rgba(129, 140, 248, 0.8);
+  transform: scaleY(0);
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.app-shell .nav-item.active::before {
+  transform: scaleY(1);
+}
+
+.app-shell .upgrade-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.app-shell .upgrade-button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  transform: translateX(-120%) skewX(-20deg);
+}
+
+.app-shell .upgrade-button:hover::after {
+  animation: app-shine 0.8s ease;
+}
+
+.app-shell .mobile-overlay {
+  animation: app-page-in 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell *,
+  .app-shell *::before,
+  .app-shell *::after,
+  .app-route-progress {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.app-shell .nav-badge {
+    margin-left: auto;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 19px;
+    text-align: center;
+}

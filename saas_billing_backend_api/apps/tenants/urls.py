@@ -2,14 +2,24 @@ from django.urls import path
 
 from .views import (
     MembershipDetailView,
+    OrganizationCreateView,
     OrganizationDetailView,
+    InvitationPreviewView,
     OrganizationInvitationCreateView,
+    OrganizationInvitationDetailView,
+    OrganizationInvitationResendView,
     OrganizationMembersView,
-    AcceptInvitationView
+    AcceptInvitationView,
 )
 
 
 urlpatterns = [
+    path(
+        "organizations/",
+        OrganizationCreateView.as_view(),
+        name="organization-create",
+    ),
+
     path(
         "organizations/<uuid:organization_id>/",
         OrganizationDetailView.as_view(),
@@ -35,8 +45,26 @@ urlpatterns = [
     ),
 
     path(
-    "auth/invitations/accept/",
-    AcceptInvitationView.as_view(),
-    name="accept-invitation",
+        "organizations/<uuid:organization_id>/invitations/<uuid:invitation_id>/",
+        OrganizationInvitationDetailView.as_view(),
+        name="organization-invitation-detail",
+    ),
+
+    path(
+        "organizations/<uuid:organization_id>/invitations/<uuid:invitation_id>/resend/",
+        OrganizationInvitationResendView.as_view(),
+        name="organization-invitation-resend",
+    ),
+
+    path(
+        "auth/invitations/preview/",
+        InvitationPreviewView.as_view(),
+        name="invitation-preview",
+    ),
+
+    path(
+        "auth/invitations/accept/",
+        AcceptInvitationView.as_view(),
+        name="accept-invitation",
     ),
 ]

@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.notifications",
     "apps.audit",
     "apps.analytics",
+    "apps.core",
 
     "corsheaders",
 
@@ -78,7 +79,54 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": (
         "rest_framework.permissions.IsAuthenticated",
     ),
+    # Per-IP limits on the public auth endpoints (apps/accounts/security.py).
+    "DEFAULT_THROTTLE_RATES": {
+        "auth": env("THROTTLE_AUTH_RATE", default="30/min"),
+        "register": env("THROTTLE_REGISTER_RATE", default="10/hour"),
+    },
+    # Number of trusted reverse proxies in front of Django, so throttles
+    # and the login lockout read the real client IP from X-Forwarded-For.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0) or None,
 }
+
+
+# =============================================================================
+# CACHE (throttles, login lockout)
+# =============================================================================
+#
+# Redis when REDIS_CACHE_URL is set (production: shared by all gunicorn
+# workers). Use a different Redis DB than the Celery broker. Otherwise a
+# per-process memory cache (development / tests).
+
+REDIS_CACHE_URL = env("REDIS_CACHE_URL", default="")
+
+if REDIS_CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_CACHE_URL,
+            "KEY_PREFIX": "saas_billing",
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+
+
+# =============================================================================
+# LOGIN BRUTE-FORCE PROTECTION
+# =============================================================================
+
+LOGIN_MAX_FAILURES_PER_IP_EMAIL = env.int(
+    "LOGIN_MAX_FAILURES_PER_IP_EMAIL", default=5
+)
+LOGIN_MAX_FAILURES_PER_EMAIL = env.int(
+    "LOGIN_MAX_FAILURES_PER_EMAIL", default=20
+)
+LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
 
 
 # =============================================================================
@@ -86,6 +134,8 @@ REST_FRAMEWORK = {
 # =============================================================================
 
 MIDDLEWARE = [
+    # First, so every log line of the request carries its ID.
+    "apps.core.middleware.RequestIDMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "corsheaders.middleware.CorsMiddleware",
@@ -149,6 +199,9 @@ AUTH_USER_MODEL = "accounts.User"
 # =============================================================================
 # PASSWORD VALIDATION
 # =============================================================================
+
+# Password reset links (apps/accounts/account.py) expire after 1 hour.
+PASSWORD_RESET_TIMEOUT = 60 * 60
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -239,17 +292,41 @@ X_FRAME_OPTIONS = "DENY"
 # LOGGING
 # =============================================================================
 
+# LOG_FORMAT=json (production) -> one JSON object per line; default is
+# readable text. Every line includes the request ID.
+LOG_FORMAT = env("LOG_FORMAT", default="text")
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_id": {
+            "()": "apps.core.middleware.RequestIDLogFilter",
+        },
+    },
+    "formatters": {
+        "text": {
+            "format": "%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
+        },
+        "json": {
+            "()": "apps.core.logging.JSONFormatter",
+        },
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "filters": ["request_id"],
+            "formatter": "json" if LOG_FORMAT == "json" else "text",
         },
     },
     "root": {
         "handlers": ["console"],
-        "level": "INFO",
+        "level": env("LOG_LEVEL", default="INFO"),
+    },
+    "loggers": {
+        # WeasyPrint/fontTools log every PDF rendering step at INFO.
+        "weasyprint": {"level": "WARNING"},
+        "fontTools": {"level": "WARNING"},
     },
 }
 
@@ -264,6 +341,15 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
 }
 
+# The refresh token lives only in this httpOnly cookie (never in the JSON
+# body or localStorage). Path-scoped so it is sent to the auth endpoints
+# only. Production: Secure=True; SameSite stays Lax because the frontend
+# and API are served from the same site (nginx proxy / Vite dev proxy).
+JWT_REFRESH_COOKIE_NAME = "sb_refresh"
+JWT_REFRESH_COOKIE_PATH = "/api/auth/"
+JWT_REFRESH_COOKIE_SECURE = env.bool("JWT_REFRESH_COOKIE_SECURE", default=False)
+JWT_REFRESH_COOKIE_SAMESITE = env("JWT_REFRESH_COOKIE_SAMESITE", default="Lax")
+
 
 
 CELERY_BROKER_URL = env(
@@ -275,6 +361,13 @@ CELERY_RESULT_BACKEND = env(
     "REDIS_URL",
     default="redis://127.0.0.1:6380/0",
 )
+
+# Reliability: a task is acknowledged only after it finished, so a worker
+# crash/redeploy re-queues it instead of losing it; one task at a time
+# per worker process so long jobs don't hold others hostage.
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -301,7 +394,20 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Public live demo: nightly reset of the demo data (see seed_demo).
+DEMO_MODE = env.bool("DEMO_MODE", default=False)
+
+if DEMO_MODE:
+    CELERY_BEAT_SCHEDULE["reset-demo-data"] = {
+        "task": "apps.core.tasks.reset_demo_data",
+        "schedule": crontab(hour=3, minute=30),
+    }
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+# Needed only when the frontend is on another origin and must send the
+# refresh cookie cross-origin (the recommended setup proxies /api instead).
+CORS_ALLOW_CREDENTIALS = True

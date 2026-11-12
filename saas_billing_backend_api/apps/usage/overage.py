@@ -24,7 +24,7 @@ from django.db import transaction
 from django.db.models import Sum
 
 from .models import OverageCharge, UsageRecord
-from .services import calculate_overage_amount
+from .services import calculate_overage_amount, get_usage_terms
 
 
 
@@ -49,14 +49,15 @@ def usage_in_window(organization_id, start, end):
 def calculate_period_overage(subscription, start, end):
     """
     Return ``(used, included, overage, price_per_1000, amount)`` for the
-    window, using the subscription's current plan.
+    window, using the subscription's plan, or the organization's usage
+    deal that applied at the start of the window.
     """
 
-    plan = subscription.plan
+    terms = get_usage_terms(subscription, at=start)
     used = usage_in_window(subscription.organization_id, start, end)
-    included = plan.api_request_limit
+    included = terms.limit
     overage = max(used - included, 0)
-    price = plan.overage_price_per_1000
+    price = terms.overage_price_per_1000
     amount = calculate_overage_amount(overage, price)
 
     return used, included, overage, price, amount

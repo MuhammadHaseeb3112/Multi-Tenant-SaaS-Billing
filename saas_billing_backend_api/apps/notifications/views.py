@@ -10,6 +10,7 @@ from apps.tenants.permissions import IsOrganizationMember
 
 from .models import Notification
 from .serializers import NotificationSerializer
+from apps.core.pagination import bounded_limit
 
 
 class NotificationListView(APIView):
@@ -27,7 +28,7 @@ class NotificationListView(APIView):
         notifications = Notification.objects.filter(
             organization_id=organization_id,
             user=request.user,
-        ).order_by("-created_at")
+        ).order_by("-created_at")[: bounded_limit(request)]
 
         serializer = NotificationSerializer(
             notifications,

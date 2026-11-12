@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
+  Ban,
   ChevronDown,
   ChevronUp,
+  CircleCheck,
   FileText,
   Mail,
   Plus,
   RefreshCw,
+  RotateCw,
   Search,
   Send,
   Trash2,
@@ -17,10 +20,12 @@ import { useOrganization } from "../../context/OrganizationContext";
 import { useOrgRole } from "../../utils/roles";
 import {
   createInvoice,
+  deleteInvoice,
   downloadInvoicePdf,
   getInvoices,
   sendInvoice,
   payInvoice,
+  updateInvoice,
   type Invoice,
   type CreateInvoiceData,
 } from "../../api/invoices";
@@ -32,6 +37,34 @@ interface InvoiceFormItem {
   description: string;
   quantity: number;
   unit_price: string;
+}
+
+// Turns a DRF error body ({"currency": ["..."]}, {"items": [{...}]})
+// into one readable line, so users see what to fix.
+function describeApiError(err: unknown, fallback: string): string {
+  const data = (err as { response?: { data?: unknown } })?.response?.data;
+
+  const first = (value: unknown, field?: string): string | undefined => {
+    if (typeof value === "string") {
+      return field && field !== "detail" && field !== "non_field_errors"
+        ? `${field.replace(/_/g, " ")}: ${value}`
+        : value;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const found = first(item, field);
+        if (found) return found;
+      }
+    } else if (value && typeof value === "object") {
+      for (const [key, item] of Object.entries(value)) {
+        const found = first(item, key);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+
+  return first(data) ?? fallback;
 }
 
 function InvoicesPage() {
@@ -48,7 +81,15 @@ function InvoicesPage() {
   const [isLoading, setIsLoading] = useState(Boolean(organizationId));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+
+  // "customers": invoices this workspace sends to its own customers.
+  // "platform": the workspace's own subscription invoices from
+  // Stripe (mirrored; they carry a stripe_invoice_id).
+  const [invoiceTab, setInvoiceTab] = useState<
+    "customers" | "platform"
+  >("customers");
   const [expandedInvoice, setExpandedInvoice] = useState<string | null>(null);
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
   const [payingInvoiceId, setPayingInvoiceId] = useState<string | null>(null);
@@ -67,6 +108,10 @@ function InvoicesPage() {
     return date.toISOString().split("T")[0];
   });
   const [tax, setTax] = useState("0.00");
+  const [sendNow, setSendNow] = useState(true);
+  const [changingStatusId, setChangingStatusId] = useState<
+    string | null
+  >(null);
 
   const [formItems, setFormItems] = useState<InvoiceFormItem[]>([
     {
@@ -116,14 +161,28 @@ function InvoicesPage() {
     await fetchInvoices();
   };
 
+  const tabInvoices = useMemo(
+    () =>
+      invoices.filter((invoice) =>
+        invoiceTab === "platform"
+          ? invoice.stripe_invoice_id !== null
+          : invoice.stripe_invoice_id === null,
+      ),
+    [invoices, invoiceTab],
+  );
+
+  const platformCount = invoices.filter(
+    (invoice) => invoice.stripe_invoice_id !== null,
+  ).length;
+
   const filteredInvoices = useMemo(() => {
     const query = searchTerm.trim().toLowerCase();
 
     if (!query) {
-      return invoices;
+      return tabInvoices;
     }
 
-    return invoices.filter((invoice) =>
+    return tabInvoices.filter((invoice) =>
       [
         invoice.invoice_number,
         invoice.status,
@@ -135,24 +194,24 @@ function InvoicesPage() {
           String(value).toLowerCase().includes(query),
         ),
     );
-  }, [invoices, searchTerm]);
+  }, [tabInvoices, searchTerm]);
 
   const stats = useMemo(() => {
-    const total = invoices.length;
+    const total = tabInvoices.length;
 
-    const paid = invoices.filter(
+    const paid = tabInvoices.filter(
       (invoice) => invoice.status.toUpperCase() === "PAID",
     ).length;
 
-    const open = invoices.filter(
+    const open = tabInvoices.filter(
       (invoice) => invoice.status.toUpperCase() === "OPEN",
     ).length;
 
-    const draft = invoices.filter(
+    const draft = tabInvoices.filter(
       (invoice) => invoice.status.toUpperCase() === "DRAFT",
     ).length;
 
-    const totalAmount = invoices.reduce(
+    const totalAmount = tabInvoices.reduce(
       (sum, invoice) => sum + Number(invoice.total || 0),
       0,
     );
@@ -164,7 +223,7 @@ function InvoicesPage() {
       draft,
       totalAmount,
     };
-  }, [invoices]);
+  }, [tabInvoices]);
 
   const formSubtotal = useMemo(() => {
     return formItems.reduce(
@@ -192,6 +251,23 @@ function InvoicesPage() {
       month: "short",
       year: "numeric",
     }).format(new Date(value));
+  };
+
+  // An open invoice whose due date has passed. Dates are compared
+  // as YYYY-MM-DD strings in the viewer's local day.
+  const isOverdue = (invoice: Invoice) => {
+    if (invoice.status.toUpperCase() !== "OPEN" || !invoice.due_date) {
+      return false;
+    }
+
+    const now = new Date();
+    const today = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+    ].join("-");
+
+    return invoice.due_date < today;
   };
 
   const getStatusClass = (status: string) => {
@@ -237,6 +313,7 @@ function InvoicesPage() {
     setDueDate(due.toISOString().split("T")[0]);
 
     setTax("0.00");
+    setSendNow(true);
 
     setFormItems([
       {
@@ -344,6 +421,20 @@ function InvoicesPage() {
         return;
         }
 
+    if (formItems.length === 0) {
+      setError("Add at least one invoice item.");
+      return;
+    }
+
+    // Tax alone is not a sale: the items themselves must be worth
+    // something.
+    if (formSubtotal <= 0) {
+      setError(
+        "The invoice items must add up to an amount greater than zero. Enter a price for at least one item.",
+      );
+      return;
+    }
+
     const validItems = formItems;
 
     try {
@@ -356,6 +447,7 @@ function InvoicesPage() {
         currency: currency.trim().toUpperCase(),
         tax: Number(tax || 0).toFixed(2),
         billing_email: billingEmail.trim(),
+        send_now: sendNow,
         items: validItems.map((item) => ({
           description: item.description.trim(),
           quantity: Number(item.quantity),
@@ -376,16 +468,123 @@ function InvoicesPage() {
       setIsCreateOpen(false);
 
       setExpandedInvoice(createdInvoice.id);
+
+      if (createdInvoice.status.toUpperCase() === "OPEN") {
+        showNotice(
+          `Invoice ${createdInvoice.invoice_number} created and emailed to ${createdInvoice.billing_email}.`,
+        );
+      }
     } catch (err) {
       console.error("Failed to create invoice:", err);
-      setError("Unable to create invoice. Please check the form and try again.");
+      setError(
+        describeApiError(
+          err,
+          "Unable to create invoice. Please check the form and try again.",
+        ),
+      );
     } finally {
       setIsCreating(false);
     }
   };
 
+  // Manual settlement: money that arrived outside Stripe, or an
+  // invoice that should never be paid. Both are final.
+  const handleStatusChange = async (
+    invoice: Invoice,
+    nextStatus: "PAID" | "VOID",
+  ) => {
+    if (!organizationId) {
+      return;
+    }
+
+    const amount = `${invoice.currency} ${Number(invoice.total).toFixed(2)}`;
+
+    const question =
+      nextStatus === "PAID"
+        ? `Mark invoice ${invoice.invoice_number} (${amount}) as paid?\n\nUse this only when the money arrived outside Stripe (bank transfer, cash). It is recorded under your name and cannot be undone.`
+        : `Void invoice ${invoice.invoice_number} (${amount})?\n\nThe customer can no longer pay it and reminders stop. This cannot be undone.`;
+
+    if (!window.confirm(question)) {
+      return;
+    }
+
+    try {
+      setChangingStatusId(invoice.id);
+      setError("");
+
+      await updateInvoice(organizationId, invoice.id, {
+        status: nextStatus,
+      });
+
+      showNotice(
+        nextStatus === "PAID"
+          ? `Invoice ${invoice.invoice_number} marked as paid.`
+          : `Invoice ${invoice.invoice_number} was voided.`,
+      );
+
+      await loadInvoices(true);
+    } catch (err) {
+      console.error("Failed to update invoice:", err);
+      setError(
+        describeApiError(err, "Unable to update the invoice."),
+      );
+    } finally {
+      setChangingStatusId(null);
+    }
+  };
+
+  // A draft was never sent, so it can simply be removed.
+  const handleDeleteDraft = async (invoice: Invoice) => {
+    if (!organizationId) {
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete draft invoice ${invoice.invoice_number}?\n\nIt was never sent to the customer. This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setChangingStatusId(invoice.id);
+      setError("");
+
+      await deleteInvoice(organizationId, invoice.id);
+
+      setExpandedInvoice(null);
+      showNotice(`Draft invoice ${invoice.invoice_number} was deleted.`);
+
+      await loadInvoices(true);
+    } catch (err) {
+      console.error("Failed to delete invoice:", err);
+      setError(
+        describeApiError(err, "Unable to delete the invoice."),
+      );
+    } finally {
+      setChangingStatusId(null);
+    }
+  };
+
+  const showNotice = (message: string) => {
+    setNotice(message);
+    window.setTimeout(() => setNotice(""), 6000);
+  };
+
   const handleSend = async (invoice: Invoice) => {
     if (!organizationId) {
+      return;
+    }
+
+    const isResend = invoice.status.toUpperCase() === "OPEN";
+
+    if (
+      isResend &&
+      !window.confirm(
+        `Send invoice ${invoice.invoice_number} again to ${invoice.billing_email}?\n\nThe payment links in earlier emails will stop working; only the new email's link can be used.`,
+      )
+    ) {
       return;
     }
 
@@ -395,10 +594,18 @@ function InvoicesPage() {
 
       await sendInvoice(organizationId, invoice.id);
 
+      showNotice(
+        isResend
+          ? `Invoice ${invoice.invoice_number} sent again to ${invoice.billing_email}. Older payment links no longer work.`
+          : `Invoice ${invoice.invoice_number} sent to ${invoice.billing_email}.`,
+      );
+
       await loadInvoices(true);
     } catch (err) {
       console.error("Failed to send invoice:", err);
-      setError("Unable to send invoice. Please try again.");
+      setError(
+        describeApiError(err, "Unable to send invoice. Please try again."),
+      );
     } finally {
       setSendingInvoice(null);
     }
@@ -514,6 +721,53 @@ function InvoicesPage() {
 
       {error && <div className="invoice-alert">{error}</div>}
 
+      {notice && (
+        <div className="invoice-alert invoice-alert-success" role="status">
+          {notice}
+        </div>
+      )}
+
+      <div
+        className="invoice-tabs"
+        role="tablist"
+        aria-label="Invoice type"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={invoiceTab === "customers"}
+          className={
+            invoiceTab === "customers"
+              ? "invoice-tab invoice-tab-active"
+              : "invoice-tab"
+          }
+          onClick={() => setInvoiceTab("customers")}
+        >
+          Customer invoices
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={invoiceTab === "platform"}
+          className={
+            invoiceTab === "platform"
+              ? "invoice-tab invoice-tab-active"
+              : "invoice-tab"
+          }
+          onClick={() => setInvoiceTab("platform")}
+        >
+          Platform billing{platformCount > 0 ? ` (${platformCount})` : ""}
+        </button>
+      </div>
+
+      {invoiceTab === "platform" && (
+        <div className="invoice-alert invoice-alert-info">
+          Invoices the platform issued to this workspace for its
+          subscription plan. Your customers never see these.
+        </div>
+      )}
+
       <div className="invoice-stats">
         <div className="invoice-stat-card">
           <span>Total invoices</span>
@@ -590,7 +844,9 @@ function InvoicesPage() {
             <p>
               {searchTerm
                 ? "Try a different search."
-                : "There are currently no invoices for this organization."}
+                : invoiceTab === "platform"
+                  ? "No subscription invoices from the platform yet."
+                  : "There are currently no invoices for this organization."}
             </p>
           </div>
         ) : (
@@ -623,13 +879,22 @@ function InvoicesPage() {
                   </button>
 
                   <div>
-                    <span
-                      className={`invoice-status ${getStatusClass(
-                        invoice.status,
-                      )}`}
-                    >
-                      {invoice.status}
-                    </span>
+                    {isOverdue(invoice) ? (
+                      <span
+                        className="invoice-status status-overdue"
+                        title="Open and past its due date"
+                      >
+                        OVERDUE
+                      </span>
+                    ) : (
+                      <span
+                        className={`invoice-status ${getStatusClass(
+                          invoice.status,
+                        )}`}
+                      >
+                        {invoice.status}
+                      </span>
+                    )}
                   </div>
 
                   <div>
@@ -662,6 +927,20 @@ function InvoicesPage() {
                         <Send size={17} />
                       </button>
                     )}
+
+                  {isFinance &&
+                    invoice.status.toUpperCase() === "OPEN" && (
+                    <button
+                      type="button"
+                      className="icon-action"
+                      title="Send again (earlier payment links stop working)"
+                      aria-label="Send invoice again"
+                      disabled={sendingInvoice === invoice.id}
+                      onClick={() => void handleSend(invoice)}
+                    >
+                      <RotateCw size={17} />
+                    </button>
+                  )}
 
                   {isFinance &&
                     invoice.status.toUpperCase() === "OPEN" && (
@@ -718,6 +997,17 @@ function InvoicesPage() {
                       </div>
 
                       <div>
+                        <span>Emailed</span>
+                        <strong>
+                          {invoice.sent_count > 0
+                            ? `${invoice.sent_count}× · last ${new Date(
+                                invoice.last_sent_at ?? "",
+                              ).toLocaleString()}`
+                            : "Not sent yet"}
+                        </strong>
+                      </div>
+
+                      <div>
                         <span>Subtotal</span>
                         <strong>
                           {invoice.currency}{" "}
@@ -747,6 +1037,73 @@ function InvoicesPage() {
                         </strong>
                       </div>
                     </div>
+
+                    {isFinance &&
+                      invoice.status.toUpperCase() === "DRAFT" && (
+                        <div className="invoice-manual-actions">
+                          <div>
+                            <strong>This draft has not been sent</strong>
+                            <p>
+                              Send it with the paper-plane button above,
+                              or delete it if it was created by mistake.
+                            </p>
+                          </div>
+
+                          <div className="invoice-manual-buttons">
+                            <button
+                              type="button"
+                              className="manual-void-button"
+                              disabled={changingStatusId === invoice.id}
+                              onClick={() =>
+                                void handleDeleteDraft(invoice)
+                              }
+                            >
+                              <Trash2 size={16} />
+                              Delete draft
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                    {isFinance &&
+                      invoice.status.toUpperCase() === "OPEN" && (
+                        <div className="invoice-manual-actions">
+                          <div>
+                            <strong>Settle this invoice by hand</strong>
+                            <p>
+                              For money received outside Stripe (bank
+                              transfer, cash), or an invoice sent by
+                              mistake.
+                            </p>
+                          </div>
+
+                          <div className="invoice-manual-buttons">
+                            <button
+                              type="button"
+                              className="manual-paid-button"
+                              disabled={changingStatusId === invoice.id}
+                              onClick={() =>
+                                void handleStatusChange(invoice, "PAID")
+                              }
+                            >
+                              <CircleCheck size={16} />
+                              Mark as paid
+                            </button>
+
+                            <button
+                              type="button"
+                              className="manual-void-button"
+                              disabled={changingStatusId === invoice.id}
+                              onClick={() =>
+                                void handleStatusChange(invoice, "VOID")
+                              }
+                            >
+                              <Ban size={16} />
+                              Void invoice
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                     {invoice.items?.length > 0 && (
                       <div className="invoice-items">
@@ -819,6 +1176,11 @@ function InvoicesPage() {
             <form
               className="invoice-create-form"
               onSubmit={handleCreateInvoice}
+              // A shown error is about the previous attempt: clear it
+              // as soon as the form is edited.
+              onChange={() => {
+                if (error) setError("");
+              }}
             >
               <div className="invoice-form-grid">
                 <label>
@@ -1020,6 +1382,24 @@ function InvoicesPage() {
                 </div>
               </div>
 
+              {error && (
+                <div className="invoice-alert" role="alert">
+                  {error}
+                </div>
+              )}
+
+              <label className="invoice-send-now">
+                <input
+                  type="checkbox"
+                  checked={sendNow}
+                  onChange={(event) => setSendNow(event.target.checked)}
+                />
+                <span>
+                  Email this invoice to the customer now (with a
+                  payment link)
+                </span>
+              </label>
+
               <div className="invoice-modal-footer">
                 <button
                   type="button"
@@ -1038,7 +1418,9 @@ function InvoicesPage() {
                   <Plus size={18} />
                   {isCreating
                     ? "Creating..."
-                    : "Create invoice"}
+                    : sendNow
+                      ? "Create & send"
+                      : "Save as draft"}
                 </button>
               </div>
             </form>

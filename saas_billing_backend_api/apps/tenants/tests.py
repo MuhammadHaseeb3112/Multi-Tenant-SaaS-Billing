@@ -978,7 +978,7 @@ class TenantsTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(
-            "https://app.example.com/register/?token=",
+            "https://app.example.com/accept-invitation?token=",
             mail.outbox[0].body,
         )
         self.assertNotIn("localhost", mail.outbox[0].body)

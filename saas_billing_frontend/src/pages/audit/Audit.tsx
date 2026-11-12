@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw } from "lucide-react";
 
 import { useOrganization } from "../../context/OrganizationContext";
 import { getAuditLogs } from "../../api/audit";
 import type { AuditLog } from "../../api/audit";
 
 function AuditPage() {
-  const navigate = useNavigate();
   const { activeOrganizationId } = useOrganization();
   const organizationId = activeOrganizationId;
 
@@ -71,9 +69,11 @@ function AuditPage() {
       <style>{`
         .audit-page {
           min-height: 100vh;
-          background: #f8fafc;
+          background:
+            radial-gradient(circle at 15% 0%, rgba(99, 102, 241, 0.10), transparent 30%),
+            #090a10;
           padding: 32px;
-          color: #0f172a;
+          color: #f8fafc;
         }
 
         .audit-container {
@@ -116,11 +116,12 @@ function AuditPage() {
           margin: 0;
           font-size: 28px;
           font-weight: 700;
+          letter-spacing: -0.02em;
         }
 
         .audit-subtitle {
           margin: 5px 0 0;
-          color: #64748b;
+          color: #7f8aa3;
           font-size: 14px;
         }
 
@@ -133,16 +134,22 @@ function AuditPage() {
         .audit-search {
           width: 280px;
           height: 42px;
-          border: 1px solid #e2e8f0;
+          border: 1px solid rgba(148, 163, 184, 0.16);
           border-radius: 10px;
-          background: white;
+          background: #11131b;
+          color: #f8fafc;
           padding: 0 14px 0 40px;
           outline: none;
           font-size: 14px;
         }
 
+        .audit-search::placeholder {
+          color: #64748b;
+        }
+
         .audit-search:focus {
           border-color: #6366f1;
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
         }
 
         .search-wrapper {
@@ -154,32 +161,33 @@ function AuditPage() {
           left: 13px;
           top: 50%;
           transform: translateY(-50%);
-          color: #94a3b8;
+          color: #64748b;
         }
 
         .refresh-button {
           height: 42px;
           padding: 0 14px;
-          border: 1px solid #e2e8f0;
+          border: 1px solid rgba(148, 163, 184, 0.16);
           border-radius: 10px;
-          background: white;
+          background: #11131b;
           display: flex;
           align-items: center;
           gap: 8px;
           cursor: pointer;
-          color: #475569;
+          color: #cbd5e1;
           font-weight: 500;
         }
 
         .refresh-button:hover {
-          background: #f1f5f9;
+          background: #181a25;
         }
 
         .audit-card {
-          background: white;
-          border: 1px solid #e2e8f0;
+          background: #101219;
+          border: 1px solid rgba(148, 163, 184, 0.12);
           border-radius: 14px;
           overflow: hidden;
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
         }
 
         .audit-table-wrapper {
@@ -194,9 +202,9 @@ function AuditPage() {
         .audit-table th {
           text-align: left;
           padding: 15px 20px;
-          background: #f8fafc;
-          border-bottom: 1px solid #e2e8f0;
-          color: #64748b;
+          background: #12141d;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+          color: #7f8aa3;
           font-size: 12px;
           font-weight: 700;
           text-transform: uppercase;
@@ -205,9 +213,17 @@ function AuditPage() {
 
         .audit-table td {
           padding: 17px 20px;
-          border-bottom: 1px solid #f1f5f9;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.08);
           font-size: 14px;
           vertical-align: top;
+        }
+
+        .audit-table tbody tr {
+          transition: background 0.18s ease;
+        }
+
+        .audit-table tbody tr:hover {
+          background: rgba(99, 102, 241, 0.06);
         }
 
         .audit-table tr:last-child td {
@@ -218,27 +234,28 @@ function AuditPage() {
           display: inline-flex;
           padding: 5px 9px;
           border-radius: 7px;
-          background: #eef2ff;
-          color: #4f46e5;
+          background: rgba(99, 102, 241, 0.14);
+          color: #a5b4fc;
+          border: 1px solid rgba(99, 102, 241, 0.25);
           font-size: 12px;
           font-weight: 700;
         }
 
         .resource {
-          color: #475569;
+          color: #94a3b8;
         }
 
         .description {
-          color: #334155;
+          color: #e2e8f0;
           max-width: 500px;
         }
 
         .user-email {
-          color: #64748b;
+          color: #94a3b8;
         }
 
         .date {
-          color: #64748b;
+          color: #7f8aa3;
           white-space: nowrap;
         }
 
@@ -247,11 +264,11 @@ function AuditPage() {
         .audit-error {
           padding: 50px 20px;
           text-align: center;
-          color: #64748b;
+          color: #7f8aa3;
         }
 
         .audit-error {
-          color: #dc2626;
+          color: #f87171;
         }
 
         @media (max-width: 800px) {
@@ -281,13 +298,6 @@ function AuditPage() {
       <div className="audit-container">
         <div className="audit-header">
           <div className="audit-title-row">
-            <button
-              className="audit-back"
-              onClick={() => navigate("/dashboard")}
-              title="Back to Dashboard"
-            >
-              <ArrowLeft size={19} />
-            </button>
 
             <div>
               <h1 className="audit-title">Recent Activity</h1>

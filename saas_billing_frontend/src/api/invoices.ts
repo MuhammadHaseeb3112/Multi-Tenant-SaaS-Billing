@@ -22,6 +22,8 @@ export interface Invoice {
   billing_email: string;
   stripe_invoice_id: string | null;
   items: InvoiceItem[];
+  sent_count: number;
+  last_sent_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -39,6 +41,8 @@ export interface CreateInvoiceData {
   tax: string;
   billing_email: string;
   items: CreateInvoiceItem[];
+  /** Email the invoice to the customer right after creating it. */
+  send_now?: boolean;
 }
 
 export interface InvoicePaymentResponse {
@@ -92,6 +96,16 @@ export const updateInvoice = async (
   return response.data;
 };
 
+/** Only DRAFT invoices can be deleted; sent ones are voided. */
+export const deleteInvoice = async (
+  organizationId: string,
+  invoiceId: string,
+): Promise<void> => {
+  await apiClient.delete(
+    `/invoices/organizations/${organizationId}/${invoiceId}/`,
+  );
+};
+
 export const downloadInvoicePdf = async (
   organizationId: string,
   invoiceId: string,
@@ -123,6 +137,43 @@ export const payInvoice = async (
 ): Promise<InvoicePaymentResponse> => {
   const response = await apiClient.post<InvoicePaymentResponse>(
     `/invoices/organizations/${organizationId}/${invoiceId}/pay/`,
+  );
+
+  return response.data;
+};
+
+/* ---------- Public payment link (customer, no login) ---------- */
+
+export interface PublicInvoice {
+  invoice_number: string;
+  organization_name: string;
+  status: string;
+  payable: boolean;
+  currency: string;
+  issue_date: string;
+  due_date: string | null;
+  subtotal: string;
+  tax: string;
+  total: string;
+  billing_email: string;
+  items: Omit<InvoiceItem, "id">[];
+}
+
+export const getPublicInvoice = async (
+  token: string,
+): Promise<PublicInvoice> => {
+  const response = await apiClient.get<PublicInvoice>(
+    `/invoices/public/${encodeURIComponent(token)}/`,
+  );
+
+  return response.data;
+};
+
+export const payPublicInvoice = async (
+  token: string,
+): Promise<{ checkout_url: string }> => {
+  const response = await apiClient.post<{ checkout_url: string }>(
+    `/invoices/public/${encodeURIComponent(token)}/pay/`,
   );
 
   return response.data;

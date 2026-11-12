@@ -334,7 +334,21 @@ function UsagePage() {
           </div>
 
           <div>
-            <span>Included ({usage.plan})</span>
+            <span>
+              Included ({usage.plan})
+              {usage.limit_source === "custom" && (
+                <em
+                  className="usage-custom-badge"
+                  title={
+                    usage.plan_limit != null
+                      ? `Custom deal for this organization (plan limit: ${usage.plan_limit.toLocaleString()})`
+                      : "Custom deal for this organization"
+                  }
+                >
+                  Custom
+                </em>
+              )}
+            </span>
 
             <strong>
               {usage.limit.toLocaleString()}
