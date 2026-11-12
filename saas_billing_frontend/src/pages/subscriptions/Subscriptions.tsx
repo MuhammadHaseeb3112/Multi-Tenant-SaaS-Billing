@@ -107,6 +107,9 @@ function SubscriptionsPage() {
 
   const [isLoading, setIsLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  // Which button started the running action, so only that one says so.
+  const [pendingAction, setPendingAction] =
+    useState<"cancel" | "portal" | null>(null);
   const [selectedPlan, setSelectedPlan] =
     useState<string | null>(null);
 
@@ -316,6 +319,7 @@ function SubscriptionsPage() {
     }
 
     setActionLoading(true);
+    setPendingAction("cancel");
     setError(null);
     setMessage(null);
 
@@ -339,6 +343,7 @@ function SubscriptionsPage() {
       setError(detail);
     } finally {
       setActionLoading(false);
+      setPendingAction(null);
     }
   };
 
@@ -348,6 +353,7 @@ function SubscriptionsPage() {
     }
 
     setActionLoading(true);
+    setPendingAction("portal");
     setError(null);
     setMessage(null);
 
@@ -360,6 +366,7 @@ function SubscriptionsPage() {
           "Unable to open the billing portal.",
       );
       setActionLoading(false);
+      setPendingAction(null);
     }
   };
 
@@ -618,7 +625,9 @@ function SubscriptionsPage() {
                   onClick={() => void handleUpdatePayment()}
                   disabled={actionLoading}
                 >
-                  Update payment method
+                  {pendingAction === "portal"
+                    ? "Opening portal..."
+                    : "Update payment method"}
                 </button>
 
                 {!subscription.cancel_at_period_end &&
@@ -630,7 +639,7 @@ function SubscriptionsPage() {
                       }
                       disabled={actionLoading}
                     >
-                      {actionLoading
+                      {pendingAction === "cancel"
                         ? "Processing..."
                         : "Cancel subscription"}
                     </button>
